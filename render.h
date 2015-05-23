@@ -1,8 +1,6 @@
 #ifndef RENDER_H
 #define RENDER_H
 
-#include <stdint.h>
-
 #include "platform.h"
 
 #define TWO_PI (3.14159265358979 * 2)
@@ -11,23 +9,23 @@
 
 typedef struct {
   WaveFormat format;
-  uint32_t samplesPerSecond;
-  uint8_t channelSampleBitLength;
-  uint8_t channelCount;
-  uint8_t sampleByteLength; // byte-aligned length of a full sample
+  uint32 samplesPerSecond;
+  byte channelSampleBitLength;
+  byte channelCount;
+  byte sampleByteLength; // byte-aligned length of a full sample
 } AudioFormat;
 typedef struct {
-  uint32_t sampleCount;
-  uint32_t byteLength;
+  uint32 sampleCount;
+  uint32 byteLength;
   char* render;
   char* active;
 } BufferConfig;
 // 0 = success
 char setAudioFormatAndBufferConfig(WaveFormat format,
-				   uint32_t samplesPerSecond,
-				   uint8_t channelSampleBitLength,
-				   uint8_t channelCount,
-				   uint32_t bufferSampleCount);
+				   uint32 samplesPerSecond,
+				   byte channelSampleBitLength,
+				   byte channelCount,
+				   uint32 bufferSampleCount);
 
 typedef struct ObjectStruct {
   void (*destructor)(ObjectStruct* o);
@@ -61,5 +59,9 @@ typedef struct {
 } SinOscillator;
 void SinOscillator_initPcm16(SinOscillator* o, float frequency, float volume);
 void SinOscillator_initFloat(SinOscillator* o, float frequency, float volume);
+
+void initializeRenderers(uint32 capacity);
+void addRenderer(AudioRenderer* renderer);
+void render();
 
 #endif

@@ -1,1 +1,1 @@
-cl /I..\.. /I.. winmm.lib example.cpp ..\platform.cpp ..\..\render.cpp
+cl /I..\.. /I.. winmm.lib main.cpp waveout.cpp ..\platform.cpp ..\..\render.cpp
