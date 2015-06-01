@@ -4,40 +4,15 @@
 #include "platform.h"
 #include "render.h"
 
-PLATFORM_DEFINE_EXTERNS
+PLATFORM_DEFINE_RENDER_EXTERNS
 
-// These structures should live somewhere else
-extern AudioFormat audioFormat;
-extern BufferConfig bufferConfig;
-
-// 0 = success
-char setAudioFormatAndBufferConfig(WaveFormat format,
-				   uint32 samplesPerSecond,
-				   byte channelSampleBitLength,
-				   byte channelCount,
-				   uint32 bufferSampleCount)
-{
-  audioFormat.format                 = format;
-  audioFormat.samplesPerSecond       = samplesPerSecond;
-  audioFormat.channelSampleBitLength = channelSampleBitLength;
-  audioFormat.channelCount           = channelCount;
-  audioFormat.sampleByteLength       = channelSampleBitLength / 8 * channelCount;
-
-  bufferConfig.sampleCount = bufferSampleCount;
-  bufferConfig.byteLength  = bufferSampleCount * audioFormat.sampleByteLength;
-  bufferConfig.render = (char*)malloc(bufferConfig.byteLength);
-  bufferConfig.active = (char*)malloc(bufferConfig.byteLength);
-  return bufferConfig.render != NULL && bufferConfig.active != NULL;
-}
-void setBufferConfig(uint32 bufferSampleCount);
-
-void SinOscillator_renderBlockPcm16(AudioRenderer* ptr, char* block)
+void SinOscillator_renderBlockPcm16(AudioRenderer* ptr, byte* block)
 {
   SinOscillator* o = (SinOscillator*)ptr;
 
   float currentPhase = o->currentPhase;
 
-  char* blockLimit = block + bufferConfig.byteLength;
+  byte* blockLimit = block + BUFFER_BYTE_LENGTH;
   
   if(ptr->state == RENDER_STATE_RELEASE) {
     while(block < blockLimit) {
@@ -58,7 +33,7 @@ void SinOscillator_renderBlockPcm16(AudioRenderer* ptr, char* block)
 	currentPhase -= TWO_PI;
       }
 
-      block += audioFormat.sampleByteLength;
+      block += SAMPLE_BYTE_LENGTH;
     }
   } else {
     while(block < blockLimit) {
@@ -74,7 +49,7 @@ void SinOscillator_renderBlockPcm16(AudioRenderer* ptr, char* block)
 	currentPhase -= TWO_PI;
       }
 
-      block += audioFormat.sampleByteLength;
+      block += SAMPLE_BYTE_LENGTH;
     }
   }
 
@@ -85,18 +60,18 @@ void SinOscillator_initPcm16(SinOscillator* o, float frequency, float volume)
   o->renderer.object.destructor = 0;
   o->renderer.renderBlock = &SinOscillator_renderBlockPcm16;
   o->renderer.volume = volume;
-  o->increment = TWO_PI * frequency / audioFormat.samplesPerSecond;
+  o->increment = TWO_PI * frequency / SAMPLES_PER_SECOND;
   o->currentPhase = 0;
   o->releasing = 0;
 }
 
-void SinOscillator_renderBlockFloat(AudioRenderer* ptr, char* block)
+void SinOscillator_renderBlockFloat(AudioRenderer* ptr, byte* block)
 {
   SinOscillator* o = (SinOscillator*)ptr;
 
   float currentPhase = o->currentPhase;
 
-  char* blockLimit = block + bufferConfig.byteLength;
+  byte* blockLimit = block + BUFFER_BYTE_LENGTH;
   
   if(ptr->state == RENDER_STATE_RELEASE) {
     while(block < blockLimit) {
@@ -109,7 +84,7 @@ void SinOscillator_renderBlockFloat(AudioRenderer* ptr, char* block)
       float note = ((float*)block)[0];
       note += ptr->volume * sin(currentPhase);
 
-      for(byte i = 0; i < audioFormat.channelCount; i++) {
+      for(byte i = 0; i < CHANNEL_COUNT; i++) {
 	((float*)block)[i] = note;
       }
 
@@ -118,7 +93,7 @@ void SinOscillator_renderBlockFloat(AudioRenderer* ptr, char* block)
 	currentPhase -= TWO_PI;
       }
 
-      block += audioFormat.sampleByteLength;
+      block += SAMPLE_BYTE_LENGTH;
     }
   } else {
     while(block < blockLimit) {
@@ -126,7 +101,7 @@ void SinOscillator_renderBlockFloat(AudioRenderer* ptr, char* block)
       float note = ((float*)block)[0];
       note += ptr->volume * sin(currentPhase);
 
-      for(byte i = 0; i < audioFormat.channelCount; i++) {
+      for(byte i = 0; i < CHANNEL_COUNT; i++) {
 	((float*)block)[i] = note;
       }
 
@@ -135,7 +110,7 @@ void SinOscillator_renderBlockFloat(AudioRenderer* ptr, char* block)
 	currentPhase -= TWO_PI;
       }
 
-      block += audioFormat.sampleByteLength;
+      block += SAMPLE_BYTE_LENGTH;
     }
   }
 
@@ -146,7 +121,7 @@ void SinOscillator_initFloat(SinOscillator* o, float frequency, float volume)
   o->renderer.object.destructor = 0;
   o->renderer.renderBlock = &SinOscillator_renderBlockFloat;
   o->renderer.volume = volume;
-  o->increment = TWO_PI * frequency / audioFormat.samplesPerSecond;
+  o->increment = TWO_PI * frequency / SAMPLES_PER_SECOND;
   o->currentPhase = 0;
   o->releasing = 0;
 }
@@ -159,11 +134,12 @@ AudioRenderer **renderers;
 uint32 currentRendererCapacity;
 uint32 currentRendererCount;
 
-void initializeRenderers(uint32 capacity)
+byte initializeRenderers(uint32 capacity)
 {
   renderers = (AudioRenderer**)malloc(capacity * sizeof(AudioRenderer*));
   currentRendererCapacity = capacity;
   currentRendererCount = 0;
+  return 0;
 }
 void addRenderer(AudioRenderer* renderer)
 {
@@ -212,7 +188,7 @@ void renderRelease(char* block, uint32 fullNote)
 
 void render()
 {
-  PLATFORM_ZERO_MEM(bufferConfig.render, bufferConfig.byteLength);
+  PLATFORM_ZERO_MEM(BUFFER_RENDER, BUFFER_BYTE_LENGTH);
   PLATFORM_RENDER_LOCK();
   if(currentRendererCount == 0) {
     PLATFORM_RENDER_UNLOCK();
@@ -226,7 +202,7 @@ void render()
       AudioRenderer* renderer = renderers[i];
       
       if(renderer->state != RENDER_STATE_DONE)
-	renderer->renderBlock(renderer, bufferConfig.render);
+	renderer->renderBlock(renderer, BUFFER_RENDER);
 
       if(renderer->state == RENDER_STATE_DONE) {
 	// REMOVE the renderer

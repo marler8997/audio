@@ -5,58 +5,118 @@
 
 #include "render.h"
 
-// Used by render.o object file
-AudioFormat audioFormat;
-BufferConfig bufferConfig;
-
-// Audio Render Information
+//--------------------------------
+// Public Data
+AudioFormat audioFormatID;
 WAVEFORMATEXTENSIBLE waveFormat;
 SRWLOCK renderLock;
+
+uint32 bufferByteLength;
+uint32 bufferSampleCount;
+byte* activeBuffer;
+byte* renderBuffer;
+//--------------------------------
+
+
 HWAVEOUT waveOut;
-
-typedef struct {
-  SinOscillator oscillator;
-  float frequency;
-} UniqueSinOscillator;
-
-#define AUDIO_BUFFER_COUNT 2
-
 typedef struct {
   WAVEHDR hdr;
   HANDLE freeEvent;
   LARGE_INTEGER writeTime;
   LARGE_INTEGER setEventTime;
 } CUSTOMWAVEHDR;
-CUSTOMWAVEHDR headers[AUDIO_BUFFER_COUNT];
+CUSTOMWAVEHDR headers[2];
+
+typedef struct {
+  SinOscillator oscillator;
+  float frequency;
+} UniqueSinOscillator;
 
 LARGE_INTEGER performanceFrequency;
 float msPerTicks;
 
-// 0 = success
-// Note: must call before setting buffer length
-char setupWindowsWaveFormat()
-{
-  waveFormat.Format.nSamplesPerSec  = audioFormat.samplesPerSecond;
-  waveFormat.Format.wBitsPerSample  = audioFormat.channelSampleBitLength;
-  waveFormat.Format.nChannels       = audioFormat.channelCount;
+// Macros that need to be defined by the audio format
 
-  if(audioFormat.format == WAVE_FORMAT_PCM) {
+byte platformInit()
+{
+  // Setup Headers
+  for(int i = 0; i < 2; i++) {
+    PLATFORM_ZERO_MEM(&headers[i], sizeof(WAVEHDR));
+    headers[i].freeEvent = CreateEvent(NULL, TRUE, TRUE, NULL);
+    if(headers[i].freeEvent == NULL) {
+      printf("CreateEvent failed\n");
+      return 1;
+    }
+  }
+
+  if(QueryPerformanceFrequency(&performanceFrequency) == 0) {
+    msPerTicks = 1000.0 / (float)performanceFrequency.QuadPart;
+    printf("QueryPerformanceFrequency failed\n");
+    return 1;
+  }
+
+  return 0;
+}
+
+// TODO: define a function to get the AudioFormat string (platform dependent?)
+
+// 0 = success
+byte setAudioFormatAndBufferConfig(AudioFormat format,
+				   uint32 samplesPerSecond,
+				   byte channelSampleBitLength,
+				   byte channelCount,
+				   uint32 bufferSampleCount_)
+{
+  //
+  // Setup audio format
+  //
+  audioFormatID = format;
+
+  waveFormat.Format.nSamplesPerSec  = samplesPerSecond;
+
+  waveFormat.Format.wBitsPerSample  = channelSampleBitLength;
+  waveFormat.Format.nBlockAlign     = channelSampleBitLength / 8 * channelCount;
+
+  waveFormat.Format.nChannels       = channelCount;
+
+  waveFormat.Format.nAvgBytesPerSec = SAMPLE_BYTE_LENGTH * samplesPerSecond;
+  
+  if(format == WAVE_FORMAT_PCM) {
     waveFormat.Format.wFormatTag      = WAVE_FORMAT_PCM;
-    waveFormat.Format.nBlockAlign     = audioFormat.sampleByteLength;
-    waveFormat.Format.nAvgBytesPerSec = audioFormat.sampleByteLength * audioFormat.samplesPerSecond;
     waveFormat.Format.cbSize          = 0; // Size of extra info
-  } else if(audioFormat.format == WAVE_FORMAT_FLOAT) {
+  } else if(format == WAVE_FORMAT_FLOAT) {
     waveFormat.Format.wFormatTag      = WAVE_FORMAT_EXTENSIBLE;
-    waveFormat.Format.nBlockAlign     = audioFormat.sampleByteLength;
-    waveFormat.Format.nAvgBytesPerSec = audioFormat.sampleByteLength * audioFormat.samplesPerSecond;
     waveFormat.Format.cbSize          = 22; // Size of extra info
-    waveFormat.Samples.wValidBitsPerSample = audioFormat.channelSampleBitLength;
+    waveFormat.Samples.wValidBitsPerSample = channelSampleBitLength;
     waveFormat.dwChannelMask          = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
     waveFormat.SubFormat              = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
   } else {
-    printf("Unsupported format %d\n", audioFormat.format);
+    printf("Unsupported format %d\n", format);
     return 1;
   }
+  
+  // Setup Buffers
+  bufferSampleCount = bufferSampleCount_;
+  bufferByteLength = bufferSampleCount_ * SAMPLE_BYTE_LENGTH;
+  
+  for(int i = 0; i < 2; i++) {
+    if(headers[i].hdr.lpData) {
+      free(headers[i].hdr.lpData);
+    }
+    
+    headers[i].hdr.dwBufferLength = bufferByteLength;
+    headers[i].hdr.lpData = (LPSTR)malloc(bufferByteLength);
+    if(headers[i].hdr.lpData == NULL) {
+      printf("malloc failed\n");
+      return 1;
+    }
+    headers[i].freeEvent = CreateEvent(NULL, TRUE, TRUE, NULL);
+    if(headers[i].freeEvent == NULL) {
+      printf("CreateEvent failed\n");
+      return 1;
+    }
+  }
+
   return 0;
 }
 
@@ -65,52 +125,6 @@ void waitForKey(const char* msg)
   printf("Press enter to %s...", msg);
   fflush(stdout);
   getchar();
-}
-
-// Need a function to copy a wave window for a specified amount of time
-// Note: maybe this can be hardware accelerated? DMA?
-// Input: Pointer to sound buffer
-//        Pointer to start offset (where to start copying the sound) (not necessary)
-//        Pointer to sound buffer limit
-//        Pointer to finish the copy
-// Output: length
-
-// Input: pointer to sound buffer
-//        length of sound to copy
-//        limit of copy
-// Output: offset into sound that was copied to fill the last copy
-size_t copySound(char* sound, size_t soundLength, char *destLimit)
-{
-  destLimit -= soundLength;
-
-  char* dest = sound + soundLength;
-  while(dest <= destLimit) {
-    memcpy(dest, sound, soundLength);
-    dest += soundLength;
-  }
-  
-  size_t left = destLimit + soundLength - dest;
-  memcpy(dest, sound, left);
-
-  return left;
-}
-
-// 0 = success, 1 = out of memory, 2 = prepareHeader error
-char initializeBuffers(HWAVEOUT waveOut)
-{
-  for(int i = 0; i < AUDIO_BUFFER_COUNT; i++) {
-    PLATFORM_ZERO_MEM(&headers[i], sizeof(WAVEHDR));
-    headers[i].hdr.dwBufferLength = bufferConfig.byteLength;
-    headers[i].hdr.lpData = (LPSTR)malloc(bufferConfig.byteLength);
-    if(headers[i].hdr.lpData == NULL)
-      return 1;
-    headers[i].freeEvent = CreateEvent(NULL, TRUE, TRUE, NULL);
-    if(headers[i].freeEvent == NULL) {
-      printf("CreateEvent failed\n");
-      return 1;
-    }
-  }
-  return 0;
 }
 
 void CALLBACK waveOutCallback(HWAVEOUT waveOut, UINT msg, DWORD_PTR instance,
@@ -151,15 +165,17 @@ DWORD CALLBACK audioWriteLoop(LPVOID param)
   }
   */
 
-  printf("Expected write time %.1f ms\n", (float)bufferConfig.sampleCount * 1000.0 / (float)audioFormat.samplesPerSecond);
+  printf("Expected write time %.1f ms\n", (float)BUFFER_SAMPLE_COUNT * 1000.0 / (float)SAMPLES_PER_SECOND);
 
   LARGE_INTEGER start, finish;
 
-  headers[0].hdr.lpData = bufferConfig.render;
-  headers[1].hdr.lpData = bufferConfig.active;
+  //headers[0].hdr.lpData = bufferConfig.render;
+  //headers[1].hdr.lpData = bufferConfig.active;
   
   // Write the first buffer
-  PLATFORM_ZERO_MEM(headers[1].hdr.lpData, bufferConfig.byteLength); // Zero out memory for last buffer
+  PLATFORM_ZERO_MEM(headers[1].hdr.lpData, BUFFER_BYTE_LENGTH); // Zero out memory for last buffer
+  activeBuffer = (byte*)headers[1].hdr.lpData;
+  renderBuffer = (byte*)headers[0].hdr.lpData;
   render(); // renders to header[0] (bufferConfig.render)
   waveOutPrepareHeader(waveOut, &headers[0].hdr, sizeof(WAVEHDR)); // IS THIS CALL NECESSARY?
   if(!ResetEvent(headers[0].freeEvent)) {
@@ -169,18 +185,14 @@ DWORD CALLBACK audioWriteLoop(LPVOID param)
   QueryPerformanceCounter(&headers[0].writeTime);
   waveOutWrite(waveOut, &headers[0].hdr, sizeof(WAVEHDR));
   
-  {
-    char* temp = bufferConfig.render;
-    bufferConfig.render = bufferConfig.active;
-    bufferConfig.active = temp;
-  }
-
   char lastBufferIndex = 0;
   char bufferIndex     = 1;
   
   while(true) {
     //printf("Rendering buffer %d\n", bufferIndex);
 
+    activeBuffer = (byte*)headers[lastBufferIndex].hdr.lpData;
+    renderBuffer = (byte*)headers[bufferIndex].hdr.lpData;
     QueryPerformanceCounter(&start);
     render();
     QueryPerformanceCounter(&finish);
@@ -203,9 +215,6 @@ DWORD CALLBACK audioWriteLoop(LPVOID param)
       char temp = bufferIndex;
       bufferIndex = lastBufferIndex;
       lastBufferIndex = temp;
-      char* tempBuffer = bufferConfig.render;
-      bufferConfig.render = bufferConfig.active;
-      bufferConfig.active = tempBuffer;
     }    
 
     QueryPerformanceCounter(&start);
@@ -276,7 +285,6 @@ char readNotes()
   KeyOscillators[VK_OEM_1     ].frequency = 622.25; // D# ';'
   KeyOscillators[VK_OEM_2     ].frequency = 659.25; // E  '/'
   
-  
   printf("Use keyboard for sounds (ESC to exit)\n");
   fflush(stdout);
   
@@ -323,12 +331,12 @@ char readNotes()
 	    } else {
 	      //printf("Key code %d 0x%x '%c' has frequency %f\n", code, code, (char)code,
 	      //KeyOscillators[code].frequency);
-	      if(audioFormat.format == WAVE_FORMAT_PCM) {
+	      if(AUDIO_FORMAT == WAVE_FORMAT_PCM) {
 		SinOscillator_initPcm16(&KeyOscillators[code].oscillator, KeyOscillators[code].frequency, .2);
-	      } else if(audioFormat.format == WAVE_FORMAT_FLOAT) {
+	      } else if(AUDIO_FORMAT == WAVE_FORMAT_FLOAT) {
 		SinOscillator_initFloat(&KeyOscillators[code].oscillator, KeyOscillators[code].frequency, .2);
 	      } else {
-		printf("unsupported audio format %d\n", audioFormat.format);
+		printf("unsupported audio format %d\n", AUDIO_FORMAT);
 		return 1;
 	      }
 	      if(needToAdd)
@@ -363,44 +371,10 @@ char readNotes()
   return 0;
 }
 
-int main(int argc, char* argv[])
+byte shim()
 {
   MMRESULT result;
-
-  QueryPerformanceFrequency(&performanceFrequency);
-  msPerTicks = 1000.0 / (float)performanceFrequency.QuadPart;
-
   
-  //initializeRenderers(1); // Use 1 right now for testing
-  initializeRenderers(16);
-
-  //
-  // Note: waveOut function will probably not be able to
-  //       keep up with a buffer size less then 23 ms (around 1024 samples @ 44100HZ).
-  //       This is a limitation on waveOut API (which is pretty high level).
-  //       To get better latency, I'll need to use CoreAudio.
-  //
-  setAudioFormatAndBufferConfig(WAVE_FORMAT_PCM,
-				44100, // samplesPerSecond
-				16,    // channelSampleBitLength
-				2,     // channelCount
-				//4410); // bufferSampleCount (about 100 ms)
-				2205); // bufferSampleCount (about 50 ms)
-                                //1664); // bufferSampleCount (about 40 ms)
-				//441); // bufferSampleCount (about 10 ms)
-  /*
-  setAudioFormatAndBufferConfig(WAVE_FORMAT_FLOAT,
-				48000, // samplesPerSecond
-				32,    // channelSampleBitLength
-				2,     // channelCount
-				//4410); // bufferSampleCount (about 100 ms)
-				2205); // bufferSampleCount (about 50 ms)
-                                //1664); // bufferSampleCount (about 40 ms)
-				//441); // bufferSampleCount (about 10 ms)
-				*/
-  if(setupWindowsWaveFormat())
-    return 1;
-
   InitializeSRWLock(&renderLock);
   result = waveOutOpen(&waveOut,
 		       WAVE_MAPPER,
@@ -412,10 +386,6 @@ int main(int argc, char* argv[])
     printf("waveOutOpen failed (result=%d '%s')\n", result, getMMRESULTString(result));
     return 1;
   }
-
-  char result2 = initializeBuffers(waveOut);
-  if(result2)
-    return result2;
 
   HANDLE audioWriteThread = CreateThread(NULL,
 					 0,
@@ -430,3 +400,4 @@ int main(int argc, char* argv[])
   
   return 0;
 }
+

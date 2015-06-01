@@ -1,3 +1,31 @@
+// Need a function to copy a wave window for a specified amount of time
+// Note: maybe this can be hardware accelerated? DMA?
+// Input: Pointer to sound buffer
+//        Pointer to start offset (where to start copying the sound) (not necessary)
+//        Pointer to sound buffer limit
+//        Pointer to finish the copy
+// Output: length
+
+// Input: pointer to sound buffer
+//        length of sound to copy
+//        limit of copy
+// Output: offset into sound that was copied to fill the last copy
+size_t copySound(char* sound, size_t soundLength, char *destLimit)
+{
+  destLimit -= soundLength;
+
+  char* dest = sound + soundLength;
+  while(dest <= destLimit) {
+    memcpy(dest, sound, soundLength);
+    dest += soundLength;
+  }
+  
+  size_t left = destLimit + soundLength - dest;
+  memcpy(dest, sound, left);
+
+  return left;
+}
+
 void fillSinWave(LPSTR block, float frequency)
 {
   float currentPhase = 0;
