@@ -1,0 +1,10 @@
+
+Music Frequency Analasys
+------------------------
+
+
+Start by taking a discrete fourier transform of a fixed time length (something like a second)
+
+Analyze the frequencies for musicality...is there more than one bass frequency?
+If there is too many clashing frequencies...shorten the time window and reananalyze.
+If there is no clashing try lengthening the time window.
