@@ -16,7 +16,6 @@ int main(int argc, char* argv[])
   //       This is a limitation on waveOut API (which is pretty high level).
   //       To get better latency, I'll need to use CoreAudio.
   //
-  /*
   if(setAudioFormatAndBufferConfig(WAVE_FORMAT_PCM,
 				   44100, // samplesPerSecond
 				   16,    // channelSampleBitLength
@@ -26,7 +25,7 @@ int main(int argc, char* argv[])
                                    //1664)) // bufferSampleCount (about 40 ms)
                                    //441)) // bufferSampleCount (about 10 ms)
     return 1;
-  */
+    /*
   if(setAudioFormatAndBufferConfig(WAVE_FORMAT_FLOAT,
 				   48000, // samplesPerSecond
 				   32,    // channelSampleBitLength
@@ -36,7 +35,7 @@ int main(int argc, char* argv[])
                                    //1664); // bufferSampleCount (about 40 ms)
 				   //441); // bufferSampleCount (about 10 ms)
     return 1;
-
+  */
   return shim();
 }
 

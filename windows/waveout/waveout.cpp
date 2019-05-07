@@ -42,18 +42,13 @@ byte platformInit()
   // Setup Headers
   for(int i = 0; i < 2; i++) {
     PLATFORM_ZERO_MEM(&headers[i], sizeof(WAVEHDR));
-    headers[i].freeEvent = CreateEvent(NULL, TRUE, TRUE, NULL);
-    if(headers[i].freeEvent == NULL) {
-      printf("CreateEvent failed\n");
-      return 1;
-    }
   }
 
   if(QueryPerformanceFrequency(&performanceFrequency) == 0) {
-    msPerTicks = 1000.0 / (float)performanceFrequency.QuadPart;
     printf("QueryPerformanceFrequency failed\n");
     return 1;
   }
+  msPerTicks = 1000.0 / (float)performanceFrequency.QuadPart;
 
   return 0;
 }
@@ -256,8 +251,15 @@ char readNotes()
     printf("Error: GetConsoleMode failed (error=%d)\n", GetLastError());
     return 1;
   }
+  DWORD newMode = oldMode;
+  newMode &= ~(
+    ENABLE_ECHO_INPUT      // disable echo
+  | ENABLE_LINE_INPUT      // disable line input, we want characters immediately
+  | ENABLE_PROCESSED_INPUT // we'll handle CTL-C so we can cleanup and reset the console mode
+  );
+  printf("Current console mode 0x%x, setting to 0x%x\n", oldMode, newMode);
 
-  if(!SetConsoleMode(stdinHandle, ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT)) {
+  if(!SetConsoleMode(stdinHandle, newMode)) {
     printf("Error: SetConsoleMode failed (error=%d)\n", GetLastError());
     return 1;
   }
@@ -291,12 +293,14 @@ char readNotes()
   BOOL continueLoop = true;
   while(continueLoop) {
     DWORD inputCount;
+    //printf("[DEBUG] ReadConsoleInput...\n");
     if(!ReadConsoleInput(stdinHandle, inputBuffer, 128, &inputCount)) {
       printf("Error: ReadConsoleInput failed (error=%d)\n", GetLastError());
       SetConsoleMode(stdinHandle, oldMode);
       return 1;
     }
 
+    //printf("[DEBUG] handling %d input events...\n", inputCount);
     for(DWORD i = 0; i < inputCount; i++) {
       switch(inputBuffer[i].EventType) {
       case KEY_EVENT: {
@@ -376,6 +380,36 @@ byte shim()
   MMRESULT result;
   
   InitializeSRWLock(&renderLock);
+  /*
+  printf("[DEBUG] WaveFormat:\n");
+  printf("[DEBUG]  validBitsPerSample=%d\n", waveFormat.Samples.wValidBitsPerSample);
+  printf("[DEBUG]  channelMask=0x%x\n", waveFormat.dwChannelMask);
+  printf("[DEBUG]  subFormat=%08x-%04x-%04x-%02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x\n"
+      , waveFormat.SubFormat.Data1
+      , waveFormat.SubFormat.Data2
+      , waveFormat.SubFormat.Data3
+      , waveFormat.SubFormat.Data4[0]
+      , waveFormat.SubFormat.Data4[1]
+      , waveFormat.SubFormat.Data4[2]
+      , waveFormat.SubFormat.Data4[3]
+      , waveFormat.SubFormat.Data4[4]
+      , waveFormat.SubFormat.Data4[5]
+      , waveFormat.SubFormat.Data4[6]
+      , waveFormat.SubFormat.Data4[7]
+  );
+  printf("[DEBUG]  format.tag=%d\n", waveFormat.Format.wFormatTag);
+  printf("[DEBUG]  format.channels=%d\n", waveFormat.Format.nChannels);
+  printf("[DEBUG]  format.samplesPerSec=%d\n", waveFormat.Format.nSamplesPerSec);
+  printf("[DEBUG]  format.avgBytesPerSec=%d\n", waveFormat.Format.nAvgBytesPerSec);
+  printf("[DEBUG]  format.blockAlign=%d\n", waveFormat.Format.nBlockAlign);
+  printf("[DEBUG]  format.bitsPerSample=%d\n", waveFormat.Format.wBitsPerSample);
+  printf("[DEBUG]  format.extraSize=%d\n", waveFormat.Format.cbSize);
+  printf("[DEBUG] WAVE_MAPPER=%p 0x%x\n", (void*)WAVE_MAPPER, WAVE_MAPPER);
+  printf("[DEBUG] CALLBACK_FUNCTION=0x%x\n", CALLBACK_FUNCTION);
+
+  printf("[DEBUG] sizeof WAVEFORMATEX=%d\n", sizeof(WAVEFORMATEX));
+  printf("[DEBUG] offsetof channelMask=%d\n", offsetof(WAVEFORMATEXTENSIBLE, dwChannelMask));
+  */
   result = waveOutOpen(&waveOut,
 		       WAVE_MAPPER,
 		       &waveFormat.Format,
