@@ -1,11 +1,32 @@
 module _none;
 
-import audio.render;
 import mar.windows.waveout : WaveFormatTag;
+
+import audio.log;
+import audio.render;
 import audio.backend.waveout;
+
 
 int main(string[] args)
 {
+    {
+        import mar.sentinel : lit;
+        import audio.vst : AudioOpcode, AEffect, loadPlugin;
+
+        static extern (C) uint vstHostCallback(AEffect *effect,
+            AudioOpcode opcode, uint index, uint value, void *ptr, float opt)
+        {
+            import audio.vst;
+            logDebug("vstHostCallback opcode=", opcode, " index=", index ," value=", value,);
+            if (opcode == AudioOpcode.MasterVersion)
+                return 2400;
+            return 0;
+        }
+
+        auto aeffect = loadPlugin(lit!"D:\\vst\\ValhallaVintageVerb.dll".ptr, &vstHostCallback);
+        logDebug("loadPlugin returned ", cast(void*)aeffect);
+    }
+
     // This should always be done first thing
     if(audio.backend.waveout.platformInit().failed)
         return 1;

@@ -28,8 +28,8 @@ struct GlobalData
     SRWLock renderLock;
     uint bufferByteLength;
     uint bufferSampleCount;
-    byte* activeBuffer;
-    byte* renderBuffer;
+    ubyte* activeBuffer;
+    ubyte* renderBuffer;
 }
 private __gshared GlobalData global;
 //--------------------------------
@@ -102,10 +102,10 @@ passfail platformInit()
 // TODO: define a function to get the AudioFormat string (platform dependent?)
 
 // 0 = success
-byte setAudioFormatAndBufferConfig(AudioFormat formatID,
+ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
 				   uint samplesPerSecond,
-				   byte channelSampleBitLength,
-				   byte channelCount,
+				   ubyte channelSampleBitLength,
+				   ubyte channelCount,
 				   uint bufferSampleCount_)
 {
     import mar.mem;
@@ -159,7 +159,7 @@ byte setAudioFormatAndBufferConfig(AudioFormat formatID,
             logError("malloc failed");
             return 1;
         }
-        headers[i].freeEvent = CreateEventA(null, 1, 1, null);
+        headers[i].freeEvent = CreateEventA(null, 1, 1, cstring.nullValue);
         if(headers[i].freeEvent.isNull)
         {
             logError("CreateEvent failed");
@@ -229,8 +229,8 @@ extern (Windows) uint audioWriteLoop(void* param)
     // Write the first buffer
     //logDebug("zeroing out memory for last buffer ", headers[1].hdr.data);
     zero(headers[1].hdr.data, bufferByteLength); // Zero out memory for last buffer
-    global.activeBuffer = cast(byte*)headers[1].hdr.data;
-    global.renderBuffer = cast(byte*)headers[0].hdr.data;
+    global.activeBuffer = cast(ubyte*)headers[1].hdr.data;
+    global.renderBuffer = cast(ubyte*)headers[0].hdr.data;
     render(); // renders to header[0] renderBuffer
     waveOutPrepareHeader(waveOut, &headers[0].hdr, headers[0].hdr.sizeof); // IS THIS CALL NECESSARY?
     if(ResetEvent(headers[0].freeEvent).failed)
@@ -248,8 +248,8 @@ extern (Windows) uint audioWriteLoop(void* param)
     {
         //logDebug("Rendering buffer ", bufferIndex);
 
-        global.activeBuffer = cast(byte*)headers[lastBufferIndex].hdr.data;
-        global.renderBuffer = cast(byte*)headers[bufferIndex].hdr.data;
+        global.activeBuffer = cast(ubyte*)headers[lastBufferIndex].hdr.data;
+        global.renderBuffer = cast(ubyte*)headers[bufferIndex].hdr.data;
         QueryPerformanceCounter(&start);
         render();
         QueryPerformanceCounter(&finish);
@@ -505,7 +505,7 @@ void dumpWaveFormat(WaveFormatExtensible* waveFormat)
 }
 
 // Temporary function to implement a computer music keyboard
-byte shim()
+ubyte shim()
 {
     import mar.windows.kernel32 : CreateThread;
     import mar.windows.winmm : WaveoutOpenFlags, WAVE_MAPPER;

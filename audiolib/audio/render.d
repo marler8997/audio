@@ -22,7 +22,7 @@ enum RenderState
 // change the renderBlock pointer.
 struct AudioRenderer(T)
 {
-    void function(T* obj, byte* block) renderBlock;
+    void function(T* obj, void* block) renderBlock;
     float volume; // 0.0 to 1.0
     RenderState state;
 }
@@ -51,9 +51,70 @@ struct SinOscillator
     }
 }
 
-void renderBlockPcm16(SinOscillator* o, byte* block)
+/*
+struct Pcm16
 {
-    float currentPhase = o.currentPhase;
+    static ushort getSample(
+}
+
+void renderSin(T)(SinOscillator* o, ubyte* block)
+{
+    auto currentPhase = o.currentPhase;
+    auto blockLimit = block + backend.bufferByteLength;
+
+    if(o.base.state == RenderState.release)
+    {
+        while(block < blockLimit)
+        {
+            o.base.volume -= .0001;
+            if(o.base.volume < 0)
+            {
+                o.base.state = RenderState.done;
+                return;
+            }
+
+
+            auto note = T.getSample(block);
+
+            // ASSUMING 16 bits per sample and 2 channels
+            ushort note = cast(ushort)*(cast(uint*)block);
+            note += cast(ushort)(o.base.volume * sin(currentPhase) * 0x7FFF);
+
+            *(cast(uint*)block) = note << 16 | note;
+
+            currentPhase += o.increment;
+            if(currentPhase > TWO_PI)
+                currentPhase -= TWO_PI;
+
+            block += backend.sampleByteLength;
+        }
+    }
+    else
+    {
+        while(block < blockLimit)
+        {
+            // ASSUMING 16 bits per sample and 2 channels
+            ushort note = cast(ushort)*(cast(uint*)block);
+            note += cast(ushort)(o.base.volume * sin(currentPhase) * 0x7FFF);
+
+            *(cast(uint*)block) = note << 16 | note;
+
+            currentPhase += o.increment;
+            if(currentPhase > TWO_PI)
+                currentPhase -= TWO_PI;
+
+            block += backend.sampleByteLength;
+        }
+    }
+
+    o.currentPhase = currentPhase;
+}
+*/
+
+
+void renderBlockPcm16(SinOscillator* o, void* block)
+{
+    auto currentPhase = o.currentPhase;
     auto blockLimit = block + backend.bufferByteLength;
 
     if(o.base.state == RenderState.release)
@@ -101,11 +162,10 @@ void renderBlockPcm16(SinOscillator* o, byte* block)
     o.currentPhase = currentPhase;
 }
 
-void renderBlockFloat(SinOscillator* o, byte* block)
+void renderBlockFloat(SinOscillator* o, void* block)
 {
     auto currentPhase = o.currentPhase;
-
-    byte* blockLimit = block + backend.bufferByteLength;
+    auto blockLimit = block + backend.bufferByteLength;
 
     if(o.base.state == RenderState.release)
     {
@@ -121,7 +181,7 @@ void renderBlockFloat(SinOscillator* o, byte* block)
             float note = (cast(float*)block)[0];
             note += o.base.volume * sin(currentPhase);
 
-            for(byte i = 0; i < backend.channelCount; i++)
+            for(ubyte i = 0; i < backend.channelCount; i++)
             {
                 (cast(float*)block)[i] = note;
             }
@@ -142,7 +202,7 @@ void renderBlockFloat(SinOscillator* o, byte* block)
             float note = (cast(float*)block)[0];
             note += o.base.volume * sin(currentPhase);
 
-            for(byte i = 0; i < backend.channelCount; i++)
+            for(ubyte i = 0; i < backend.channelCount; i++)
             {
                 (cast(float*)block)[i] = note;
             }
@@ -169,7 +229,7 @@ __gshared uint currentRendererCapacity;
 __gshared uint currentRendererCount;
 
 
-byte initializeRenderers(uint capacity)
+ubyte initializeRenderers(uint capacity)
 {
     import mar.mem : malloc;
     renderers = cast(AudioRenderer!void**)malloc(capacity * (AudioRenderer!void*).sizeof);
