@@ -58,6 +58,7 @@ int main(string[] args)
 
     run([dc
         , "-betterC"
+        //,"-v" // verbose
         ,"-g", "-debug"
         // NOTE: using m32mscoff allows you to debug with visual studio
         //       however, it requires access to the MSVC linker

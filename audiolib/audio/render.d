@@ -1,19 +1,21 @@
 module audio.render;
 
+import mar.passfail;
 import mar.math : sin;
 
 import audio.log;
+import audio.format : CurrentFormat;
 import backend = audio.backend;
 
 enum TWO_PI = 3.14159265358979 * 2;
 
 enum RenderState
 {
+    off,
     attack,
     sustain,
     delay,
     release,
-    done,
 }
 
 // NOTE: This Audio Renderer Uses a renderBlock function
@@ -22,7 +24,7 @@ enum RenderState
 // change the renderBlock pointer.
 struct AudioRenderer(T)
 {
-    void function(T* obj, void* block) renderBlock;
+    void function(T* obj, void* block, const void* limit) renderBlock;
     float volume; // 0.0 to 1.0
     RenderState state;
 }
@@ -32,210 +34,70 @@ struct SinOscillator
     AudioRenderer!SinOscillator base;
     float increment; // READONLY
     float currentPhase;
-    char releasing;
-    void initPcm16(float frequency, float volume)
+    void init(Format)(uint samplesPerSecond, float frequency, float volume)
     {
-        this.base.renderBlock = &renderBlockPcm16;
+        this.base.renderBlock = &renderSin!Format;
         this.base.volume = volume;
-        this.increment = TWO_PI * frequency / backend.samplesPerSecond;
+        this.base.state = RenderState.sustain;
+        this.increment = TWO_PI * frequency / samplesPerSecond;
         this.currentPhase = 0;
-        this.releasing = 0;
-    }
-    void initFloat(float frequency, float volume)
-    {
-        this.base.renderBlock = &renderBlockFloat;
-        this.base.volume = volume;
-        this.increment = TWO_PI * frequency / backend.samplesPerSecond;
-        this.currentPhase = 0;
-        this.releasing = 0;
     }
 }
-
-/*
-struct Pcm16
-{
-    static ushort getSample(
-}
-
-void renderSin(T)(SinOscillator* o, ubyte* block)
+void renderSin(Format)(SinOscillator* o, void* block, const void* limit)
 {
     auto currentPhase = o.currentPhase;
-    auto blockLimit = block + backend.bufferByteLength;
+    scope (exit) o.currentPhase = currentPhase;
 
-    if(o.base.state == RenderState.release)
+    while(block < limit)
     {
-        while(block < blockLimit)
+        if (o.base.state == RenderState.release)
         {
             o.base.volume -= .0001;
-            if(o.base.volume < 0)
+            if (o.base.volume <= 0)
             {
-                o.base.state = RenderState.done;
-                return;
+                o.base.state = RenderState.off;
+                break;
             }
-
-
-            auto note = T.getSample(block);
-
-            // ASSUMING 16 bits per sample and 2 channels
-            ushort note = cast(ushort)*(cast(uint*)block);
-            note += cast(ushort)(o.base.volume * sin(currentPhase) * 0x7FFF);
-
-            *(cast(uint*)block) = note << 16 | note;
-
-            currentPhase += o.increment;
-            if(currentPhase > TWO_PI)
-                currentPhase -= TWO_PI;
-
-            block += backend.sampleByteLength;
         }
+
+        Format.getSampleRef(block) += cast(Format.SampleType)(o.base.volume * sin(currentPhase) * Format.MaxAmplitude);
+
+        currentPhase += o.increment;
+        if(currentPhase > TWO_PI)
+            currentPhase -= TWO_PI;
+
+        block += Format.SampleType.sizeof;
     }
-    else
-    {
-        while(block < blockLimit)
-        {
-            // ASSUMING 16 bits per sample and 2 channels
-            ushort note = cast(ushort)*(cast(uint*)block);
-            note += cast(ushort)(o.base.volume * sin(currentPhase) * 0x7FFF);
-
-            *(cast(uint*)block) = note << 16 | note;
-
-            currentPhase += o.increment;
-            if(currentPhase > TWO_PI)
-                currentPhase -= TWO_PI;
-
-            block += backend.sampleByteLength;
-        }
-    }
-
-    o.currentPhase = currentPhase;
-}
-*/
-
-
-void renderBlockPcm16(SinOscillator* o, void* block)
-{
-    auto currentPhase = o.currentPhase;
-    auto blockLimit = block + backend.bufferByteLength;
-
-    if(o.base.state == RenderState.release)
-    {
-        while(block < blockLimit)
-        {
-            o.base.volume -= .0001;
-            if(o.base.volume < 0)
-            {
-                o.base.state = RenderState.done;
-                return;
-            }
-
-            // ASSUMING 16 bits per sample and 2 channels
-            ushort note = cast(ushort)*(cast(uint*)block);
-            note += cast(ushort)(o.base.volume * sin(currentPhase) * 0x7FFF);
-
-            *(cast(uint*)block) = note << 16 | note;
-
-            currentPhase += o.increment;
-            if(currentPhase > TWO_PI)
-                currentPhase -= TWO_PI;
-
-            block += backend.sampleByteLength;
-        }
-    }
-    else
-    {
-        while(block < blockLimit)
-        {
-            // ASSUMING 16 bits per sample and 2 channels
-            ushort note = cast(ushort)*(cast(uint*)block);
-            note += cast(ushort)(o.base.volume * sin(currentPhase) * 0x7FFF);
-
-            *(cast(uint*)block) = note << 16 | note;
-
-            currentPhase += o.increment;
-            if(currentPhase > TWO_PI)
-                currentPhase -= TWO_PI;
-
-            block += backend.sampleByteLength;
-        }
-    }
-
-    o.currentPhase = currentPhase;
 }
 
-void renderBlockFloat(SinOscillator* o, void* block)
+struct Global
 {
-    auto currentPhase = o.currentPhase;
-    auto blockLimit = block + backend.bufferByteLength;
+    import mar.arraybuilder : ArrayBuilder;
+    import mar.windows.types : SRWLock;
 
-    if(o.base.state == RenderState.release)
-    {
-        while(block < blockLimit)
-        {
-            o.base.volume -= .0001;
-            if(o.base.volume < 0)
-            {
-                o.base.state = RenderState.done;
-                return;
-            }
+    SRWLock lock;
+    ArrayBuilder!(AudioRenderer!void*) renderers;
+}
+__gshared Global global;
 
-            float note = (cast(float*)block)[0];
-            note += o.base.volume * sin(currentPhase);
-
-            for(ubyte i = 0; i < backend.channelCount; i++)
-            {
-                (cast(float*)block)[i] = note;
-            }
-
-            currentPhase += o.increment;
-            if(currentPhase > TWO_PI)
-            {
-                currentPhase -= TWO_PI;
-            }
-
-            block += backend.sampleByteLength;
-        }
-    }
-    else
-    {
-        while(block < blockLimit)
-        {
-            float note = (cast(float*)block)[0];
-            note += o.base.volume * sin(currentPhase);
-
-            for(ubyte i = 0; i < backend.channelCount; i++)
-            {
-                (cast(float*)block)[i] = note;
-            }
-
-            currentPhase += o.increment;
-            if(currentPhase > TWO_PI)
-            {
-                currentPhase -= TWO_PI;
-            }
-
-            block += backend.sampleByteLength;
-        }
-    }
-
-    o.currentPhase = currentPhase;
+passfail renderPlatformInit()
+{
+    import mar.windows.kernel32 : InitializeSRWLock;
+    InitializeSRWLock(&global.lock);
+    return passfail.pass;
 }
 
-
-//
-// Render Logic
-//
-__gshared AudioRenderer!void **renderers;
-__gshared uint currentRendererCapacity;
-__gshared uint currentRendererCount;
-
-
-ubyte initializeRenderers(uint capacity)
+final void enterRenderCriticalSection()
 {
-    import mar.mem : malloc;
-    renderers = cast(AudioRenderer!void**)malloc(capacity * (AudioRenderer!void*).sizeof);
-    currentRendererCapacity = capacity;
-    currentRendererCount = 0;
-    return 0;
+    import mar.windows.kernel32 : AcquireSRWLockExclusive;
+    pragma(inline, true);
+    AcquireSRWLockExclusive(&global.lock);
+}
+final void exitRenderCriticalSection()
+{
+    import mar.windows.kernel32 : ReleaseSRWLockExclusive;
+    pragma(inline, true);
+    ReleaseSRWLockExclusive(&global.lock);
 }
 
 void addRenderer(T)(AudioRenderer!T* renderer)
@@ -245,84 +107,109 @@ void addRenderer(T)(AudioRenderer!T* renderer)
 void addRenderer(AudioRenderer!void* renderer)
 {
     import mar.mem : realloc;
-    if(currentRendererCount >= currentRendererCapacity)
+    enterRenderCriticalSection();
+    scope (exit) exitRenderCriticalSection();
+    auto result = global.renderers.tryPut(renderer);
+    if (result.failed)
     {
-        realloc(renderers, currentRendererCapacity * 2);
+        logError("failed to add renderer: ", result);
+        assert(0);
     }
-    renderers[currentRendererCount++] = renderer;
     //printf("Added a renderer (there are now %d renderers)\n", currentRendererCount);
 }
 
-/*
-// Make sure the sound cuts off nicely
-// Assume 16 bit sample 2-channel
-void renderRelease(char* block, uint fullNote)
-{
-  int16 maxDiff = (int16)(audioFormat.samplesPerSecond / 100 * 2);
-
-  int16 note = (int16)(fullNote & 0xFFFF);
-  if(fullNote >> 16 == (ushort)note) {
-    if(note > 0) {
-      while(true) {
-	note -= maxDiff;
-	if(note < 0)
-	  break;
-	*((uint*)block) = note << 16 | note;
-	printf("[DEBUG] release %d\n", note);
-	
-	block += audioFormat.sampleByteLength;
-      }	
-    } else {
-      while(true) {
-	note += maxDiff;
-	if(note > 0)
-	  break;
-	*((uint*)block) = note << 16 | note;
-	printf("[DEBUG] release %d\n", note);
-	
-	block += audioFormat.sampleByteLength;
-      }	
-    }
-  } else {
-    printf("[WARNING] releasing sound with different phases on left/right is not implemented\n");
-  }
-}
-*/
-
-void render()
+void render(void* buffer, const void* limit)
 {
     import mar.mem : zero;
-    zero(backend.renderBuffer, backend.bufferByteLength);
-    backend.doRenderLock();
+    zero(buffer, limit - buffer);
+    enterRenderCriticalSection();
+    scope (exit) exitRenderCriticalSection();
+
     //logDebug("render (", currentRendererCount, " renderers)");
-    if(currentRendererCount == 0)
+    for (size_t i = 0; i < global.renderers.length; i++)
     {
-        backend.doRenderUnlock();
-        //uint fullNote = (((uint*)lastBlock)[bufferConfig.sampleCount-1]);
-        //renderRelease(block, fullNote);
-    }
-    else
-    {
-        for (uint rendererIndex = 0; rendererIndex < currentRendererCount; rendererIndex++)
+        auto renderer = global.renderers[i];
+
+        if(renderer.state != RenderState.off)
+            renderer.renderBlock(renderer, buffer, limit);
+
+        if(renderer.state == RenderState.off)
         {
-            auto renderer = renderers[rendererIndex];
-
-            if(renderer.state != RenderState.done)
-                renderer.renderBlock(renderer, backend.renderBuffer);
-
-            if(renderer.state == RenderState.done)
-            {
-                // REMOVE the renderer
-                //logDebug("renderer is done, removing");
-                for(uint j = rendererIndex; j+1 < currentRendererCount; j++)
-                {
-                    renderers[j] = renderers[j+1];
-                }
-                currentRendererCount--;
-                rendererIndex--;
-            }
+            global.renderers.removeAt(i);
+            i--; // rewind
         }
-        backend.doRenderUnlock();
     }
 }
 
+extern (Windows) uint renderThread(void* param)
+{
+    /*
+    // Set priority
+    if(!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
+    printf("SetPriorityClass failed\n");
+    return 1;
+    }
+    */
+    renderLoop!CurrentFormat(backend.bufferSampleCount);
+    return 0;
+}
+
+passfail renderLoop(Format)(uint bufferSampleCount)
+{
+    import mar.mem : malloc, free;
+    import mar.time;
+    import mar.windows.kernel32 : WaitForSingleObject;
+
+    const renderBufferSize = bufferSampleCount * Format.SampleType.sizeof;
+    logDebug("renderBufferSize ", renderBufferSize);
+    auto renderBuffer = malloc(renderBufferSize);
+    if(renderBuffer == null)
+    {
+        logError("malloc failed");
+        return passfail.fail;
+    }
+    const result = renderLoop!Format(renderBuffer, renderBuffer + renderBufferSize);
+    free(renderBuffer);
+    return result;
+}
+
+
+//version = AddDefaultRenderer;
+//version = DebugDumpRender;
+passfail renderLoop(Format)(void* renderBuffer, const void* renderLimit)
+{
+    while(true)
+    {
+        //logDebug("Rendering buffer ", bufferIndex);
+        //renderStartTick.update();
+        //version (DebugDumpRender)
+        version (AddDefaultRenderer)
+        {
+            static bool added = false;
+            static SinOscillator o;
+            if (!added)
+            {
+                o.init!Format(backend.samplesPerSec, 261.63, .2);
+                addRenderer(&o.base);
+                added = true;
+            }
+        }
+
+        render(renderBuffer, renderLimit);
+
+        version (DebugDumpRender)
+        {
+            for (auto p = cast(Format.SampleType*)renderBuffer; p < renderLimit; p++)
+            {
+                logDebug(p[0]);
+            }
+            import mar.process : exit;
+            exit(1);
+        }
+        if (backend.writeBuffer!Format(renderBuffer).failed)
+        {
+            // error already logged
+            return passfail.fail;
+        }
+    }
+}

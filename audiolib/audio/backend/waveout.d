@@ -4,10 +4,9 @@ import mar.passfail;
 import mar.mem : zero;
 import mar.c : cstring;
 
-import mar.windows.types : Handle, SRWLock, INFINITE, InputRecord, ConsoleFlag;
+import mar.windows.types : Handle, INFINITE, InputRecord, ConsoleFlag;
 import mar.windows.kernel32 :
     GetLastError, GetCurrentThreadId,
-    InitializeSRWLock, AcquireSRWLockExclusive, ReleaseSRWLockExclusive,
     CreateEventA, SetEvent, ResetEvent,
     QueryPerformanceFrequency, QueryPerformanceCounter,
     WaitForSingleObject;
@@ -17,62 +16,157 @@ import mar.windows.waveout :
     WaveFormatExtensible, WaveHeader, WaveOutputMessage;
 
 import audio.log;
-import audio.render : RenderState, SinOscillator, addRenderer, render;
 
-//--------------------------------
-// Public Data
+struct CustomWaveHeader
+{
+  WaveHeader base;
+  Handle freeEvent;
+  //long writeTime;
+  //long setEventTime;
+}
+
+version = UseBackBuffer;
+version (UseBackBuffer)
+{
+    enum PlayBufferCount = 2;
+}
+else
+{
+    enum PlayBufferCount = 1;
+}
+
 struct GlobalData
 {
+    WaveoutHandle waveOut;
     AudioFormat audioFormatID;
     WaveFormatExtensible waveFormat;
-    SRWLock renderLock;
-    uint bufferByteLength;
+    CustomWaveHeader[PlayBufferCount] waveHeaders;
+    CustomWaveHeader *frontBuffer;
+    version (UseBackBuffer)
+    {
+        CustomWaveHeader *backBuffer;
+    }
     uint bufferSampleCount;
-    ubyte* activeBuffer;
-    ubyte* renderBuffer;
+    uint playBufferSize;
 }
 private __gshared GlobalData global;
-//--------------------------------
+
+
+struct Timer
+{
+    long startTime;
+    void start()
+    {
+        QueryPerformanceCounter(&startTime);
+    }
+    auto getElapsedStop()
+    {
+        long now;
+        QueryPerformanceCounter(&now);
+        return now - startTime;
+    }
+    auto getElapsedRestart()
+    {
+        long now;
+        QueryPerformanceCounter(&now);
+        auto result = now - startTime;
+        startTime = now;
+        return result;
+    }
+}
 
 // ========================================================================================
 // Backend API
 alias AudioFormat = WaveFormatTag;
-void doRenderLock()
+passfail open()
 {
-    import mar.windows.kernel32 : AcquireSRWLockExclusive;
-    pragma(inline, true);
-    AcquireSRWLockExclusive(&global.renderLock);
+    const result = waveOutOpen(&global.waveOut,
+        WAVE_MAPPER,
+        &global.waveFormat.format,
+        cast(void*)&waveOutCallback,
+        null,
+        MuitlmediaOpenFlags.callbackFunction);
+    if(result.failed)
+    {
+        //printf("waveOutOpen failed (result=%d '%s')\n", result, getMMRESULTString(result));
+        logError("waveOutOpen failed, result=", result);
+        return passfail.fail;
+    }
+    return passfail.pass;
 }
-void doRenderUnlock()
+passfail close()
 {
-    import mar.windows.kernel32 : ReleaseSRWLockExclusive;
-    pragma(inline, true);
-    ReleaseSRWLockExclusive(&global.renderLock);
+    if (waveOutClose(global.waveOut).failed)
+        return passfail.fail;
+    return passfail.pass;
 }
-auto renderBuffer() { pragma(inline, true); return global.renderBuffer; }
-auto channelCount() { pragma(inline, true); return global.waveFormat.format.channelCount; }
+
+auto samplesPerSec() { pragma(inline, true); return global.waveFormat.format.samplesPerSec; }
 auto bufferSampleCount() { pragma(inline, true); return global.bufferSampleCount; }
-auto samplesPerSecond() { pragma(inline, true); return global.waveFormat.format.samplesPerSec; }
-auto bufferByteLength() { pragma(inline, true); return global.bufferByteLength; }
-auto sampleByteLength() { pragma(inline, true); return global.waveFormat.format.blockAlign; }
+
+/**
+Writes the given renderBuffer to the audio backend.
+Also blocks until the next buffer needs to be rendered.
+This blocking characterstic is what keeps the render thread from spinning.
+*/
+version (UseBackBuffer)
+passfail writeBuffer(Format)(void* renderBuffer)
+{
+    import mar.windows.types : INFINITE;
+    import mar.windows.kernel32 : GetLastError, WaitForSingleObject;
+
+    // TODO: figure out which functions are taking the longest
+    //now.update();
+    Format.monoToStereo(cast(uint*)global.backBuffer.base.data, cast(ushort*)renderBuffer, global.bufferSampleCount);
+    // TODO: is prepare necessary each time with no backbuffer?
+    {
+        const result = waveOutPrepareHeader(global.waveOut, &global.backBuffer.base, WaveHeader.sizeof);
+        if (result.failed)
+        {
+            logError("waveOutPrepareHeader failed, result=", result);
+            return passfail.fail;
+        }
+    }
+    if(ResetEvent(global.backBuffer.freeEvent).failed)
+    {
+        logError("ResetEvent failed, e=", GetLastError());
+        return passfail.fail;
+    }
+    {
+        const result = waveOutWrite(global.waveOut, &global.backBuffer.base, WaveHeader.sizeof);
+        if (result.failed)
+        {
+            logError("waveOutWrite failed, result=", result);
+            return passfail.fail;
+        }
+    }
+
+    // Wait for the front buffer, this delays the next render so it doesn't happen
+    // too soon.
+    {
+        //logDebug("waiting for play buffer...");
+        const result = WaitForSingleObject(global.frontBuffer.freeEvent, INFINITE);
+        if (result != 0)
+        {
+            logError("Expected WaitForSingleObject to return 0 but got ", result, ", e=", GetLastError());
+            return passfail.fail;
+        }
+    }
+    // TODO: is unprepare necessary with no backbuffer?
+    {
+        const result = waveOutUnprepareHeader(global.waveOut, &global.frontBuffer.base, WaveHeader.sizeof);
+        if (result.failed)
+        {
+            logError("waveOutUnprepareHeader failed, result=", result);
+            return passfail.fail;
+        }
+    }
+    auto temp = global.frontBuffer;
+    global.frontBuffer = global.backBuffer;
+    global.backBuffer = temp;
+    return passfail.pass;
+}
 // ========================================================================================
-
-
-__gshared WaveoutHandle waveOut;
-struct CustomWaveHeader
-{
-  WaveHeader hdr;
-  Handle freeEvent;
-  long writeTime;
-  long setEventTime;
-}
-__gshared CustomWaveHeader[2] headers;
-
-struct UniqueSinOscillator
-{
-    SinOscillator oscillator;
-    float frequency;
-}
 
 __gshared long performanceFrequency;
 __gshared float msPerTicks;
@@ -83,10 +177,12 @@ passfail platformInit()
     import mar.mem : zero;
 
     // Setup Headers
-    for(int i = 0; i < 2; i++)
+    /*
+    for(int i = 0; i < 1; i++)
     {
         zero(&headers[i], headers[0].sizeof);
     }
+    */
 
     if(QueryPerformanceFrequency(&performanceFrequency).failed)
     {
@@ -106,7 +202,7 @@ ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
 				   uint samplesPerSecond,
 				   ubyte channelSampleBitLength,
 				   ubyte channelCount,
-				   uint bufferSampleCount_)
+				   uint bufferSampleCount)
 {
     import mar.mem;
 
@@ -122,7 +218,7 @@ ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
 
     global.waveFormat.format.channelCount   = channelCount;
 
-    global.waveFormat.format.avgBytesPerSec = sampleByteLength * samplesPerSecond;
+    global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * samplesPerSecond;
 
     if(formatID == WaveFormatTag.pcm)
     {
@@ -144,27 +240,30 @@ ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
     }
 
     // Setup Buffers
-    global.bufferSampleCount = bufferSampleCount_;
-    global.bufferByteLength = bufferSampleCount_ * sampleByteLength;
-
-    foreach (i; 0 .. 2)
+    global.bufferSampleCount = bufferSampleCount;
+    global.playBufferSize = bufferSampleCount * global.waveFormat.format.blockAlign;
+    foreach (i; 0 .. PlayBufferCount)
     {
-        if(headers[i].hdr.data)
-            free(headers[i].hdr.data);
-
-        headers[i].hdr.bufferLength = bufferByteLength;
-        headers[i].hdr.data = malloc(bufferByteLength);
-        if(headers[i].hdr.data == null)
+        if (global.waveHeaders[i].base.data)
+            free(global.waveHeaders[i].base.data);
+        global.waveHeaders[i].base.bufferLength = global.playBufferSize;
+        global.waveHeaders[i].base.data = malloc(global.playBufferSize);
+        if(global.waveHeaders[i].base.data == null)
         {
             logError("malloc failed");
             return 1;
         }
-        headers[i].freeEvent = CreateEventA(null, 1, 1, cstring.nullValue);
-        if(headers[i].freeEvent.isNull)
+        global.waveHeaders[i].freeEvent = CreateEventA(null, 1, 1, cstring.nullValue);
+        if(global.waveHeaders[i].freeEvent.isNull)
         {
             logError("CreateEvent failed");
             return 1;
         }
+    }
+    global.frontBuffer = &global.waveHeaders[0];
+    version (UseBackBuffer)
+    {
+        global.backBuffer = &global.waveHeaders[1];
     }
 
     return 0;
@@ -194,11 +293,11 @@ extern (Windows) void waveOutCallback(WaveoutHandle waveOut, uint msg, uint* ins
     case WaveOutputMessage.done:
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_DONE)");
         {
-            auto header = cast(WaveHeader*)param1;
+            auto header = cast(CustomWaveHeader*)param1;
             //printf("[DEBUG] header (dwBufferLength=%d,data=0x%p)\n",
             //header->dwBufferLength, header->data);
-            QueryPerformanceCounter(&((cast(CustomWaveHeader*)header).setEventTime));
-            SetEvent((cast(CustomWaveHeader*)header).freeEvent);
+            //QueryPerformanceCounter(&header.setEventTime);
+            SetEvent(header.freeEvent);
         }
         break;
     default:
@@ -206,271 +305,6 @@ extern (Windows) void waveOutCallback(WaveoutHandle waveOut, uint msg, uint* ins
         break;
     }
     flushDebug();
-}
-
-extern (Windows) uint audioWriteLoop(void* param)
-{
-    /*
-    // Set priority
-    if(!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
-    printf("SetPriorityClass failed\n");
-    return 1;
-    }
-    */
-
-    // TODO: don't cast to uint, mar not able to print floats yet
-    log("Expected write time ", cast(uint)(cast(float)bufferSampleCount * 1000.0 / cast(float)samplesPerSecond));
-
-    long start, finish;
-
-    //headers[0].hdr.data = bufferConfig.render;
-    //headers[1].hdr.data = bufferConfig.active;
-
-    // Write the first buffer
-    //logDebug("zeroing out memory for last buffer ", headers[1].hdr.data);
-    zero(headers[1].hdr.data, bufferByteLength); // Zero out memory for last buffer
-    global.activeBuffer = cast(ubyte*)headers[1].hdr.data;
-    global.renderBuffer = cast(ubyte*)headers[0].hdr.data;
-    render(); // renders to header[0] renderBuffer
-    waveOutPrepareHeader(waveOut, &headers[0].hdr, headers[0].hdr.sizeof); // IS THIS CALL NECESSARY?
-    if(ResetEvent(headers[0].freeEvent).failed)
-    {
-        logError("ResetEvent failed, e=", GetLastError());
-        return 1;
-    }
-    QueryPerformanceCounter(&headers[0].writeTime);
-    waveOutWrite(waveOut, &headers[0].hdr, WaveHeader.sizeof);
-
-    ubyte lastBufferIndex = 0;
-    ubyte bufferIndex     = 1;
-
-    while(true)
-    {
-        //logDebug("Rendering buffer ", bufferIndex);
-
-        global.activeBuffer = cast(ubyte*)headers[lastBufferIndex].hdr.data;
-        global.renderBuffer = cast(ubyte*)headers[bufferIndex].hdr.data;
-        QueryPerformanceCounter(&start);
-        render();
-        QueryPerformanceCounter(&finish);
-        const renderTime = finish - start;
-
-        QueryPerformanceCounter(&start);
-        waveOutPrepareHeader(waveOut, &headers[bufferIndex].hdr, WaveHeader.sizeof);
-        QueryPerformanceCounter(&finish);
-        const prepareTime = finish - start;
-
-        if(ResetEvent(headers[bufferIndex].freeEvent).failed)
-        {
-            logError("ResetEvent failed, e=", GetLastError());
-            return 1;
-        }
-
-        QueryPerformanceCounter(&headers[bufferIndex].writeTime);
-        waveOutWrite(waveOut, &headers[bufferIndex].hdr, WaveHeader.sizeof);
-
-        {
-            char temp = bufferIndex;
-            bufferIndex = lastBufferIndex;
-            lastBufferIndex = temp;
-        }
-
-        QueryPerformanceCounter(&start);
-        WaitForSingleObject(headers[bufferIndex].freeEvent, INFINITE);
-        QueryPerformanceCounter(&finish);
-        long waitTime = finish - start;
-
-        QueryPerformanceCounter(&start);
-        waveOutUnprepareHeader(waveOut, &headers[bufferIndex].hdr, WaveHeader.sizeof);
-        QueryPerformanceCounter(&finish);
-        long unprepareTime = finish - start;
-
-        /*
-        printf("Buffer %d stats render=%.1f ms, perpare=%.1f ms, write=%.1f ms, setEvent=%.1f ms, unprepare=%.1f ms, waited=%.1f ms\n", bufferIndex,
-        renderTime * msPerTicks,
-        prepareTime * msPerTicks,
-        (headers[bufferIndex].setEventTime - headers[bufferIndex].writeTime) * msPerTicks,
-        (finish - headers[bufferIndex].setEventTime) * msPerTicks,
-        unprepareTime * msPerTicks,
-        waitTime    * msPerTicks);
-        */
-    }
-}
-
-// 0 = success
-char readNotes()
-{
-    import mar.print : formatHex;
-    import mar.stdio : stdin;
-    import mar.windows.types : EventType;
-    import mar.windows.kernel32 :
-        GetConsoleMode, SetConsoleMode, ReadConsoleInputA;
-
-    // TODO: move these to mar
-    enum VK_ESCAPE = 0x1b;
-    enum VK_OEM_COMMA = 0xbc;
-    enum VK_OEM_PERIOD = 0xbe;
-    enum VK_OEM_1 = 0xba;
-    enum VK_OEM_2 = 0xbf;
-    enum LEFT_CTRL_PRESSED = 0x0008;
-    enum RIGHT_CTRL_PRESSED = 0x0004;
-
-
-    InputRecord[128] inputBuffer;
-
-    if(!stdin.isValid)
-    {
-        logError("Error: failed to get stdin handle");
-        return 1;
-    }
-
-    // Save old input mode
-    uint oldMode;
-    if(GetConsoleMode(stdin.asHandle, &oldMode).failed)
-    {
-        logError("Error: GetConsoleMode failed, e=", GetLastError());
-        return 1;
-    }
-    auto newMode = oldMode;
-    newMode &= ~(
-          ConsoleFlag.enableEchoInput      // disable echo
-        | ConsoleFlag.enableLineInput      // disable line input, we want characters immediately
-        | ConsoleFlag.enableProcessedInput // we'll handle CTL-C so we can cleanup and reset the console mode
-    );
-    log("Current console mode 0x", oldMode.formatHex, ", setting so 0x", newMode.formatHex);
-
-    if(SetConsoleMode(stdin.asHandle, newMode).failed)
-    {
-        logError("Error: SetConsoleMode failed, e=", GetLastError());
-        return 1;
-    }
-
-    __gshared static UniqueSinOscillator[256] KeyOscillators;
-    for(ushort i = 0; i < 256; i++)
-    {
-        KeyOscillators[i].frequency = 0;
-        KeyOscillators[i].oscillator.base.state = RenderState.done; // keeps note from being started multiple times
-    }
-    KeyOscillators['Z'          ].frequency = 261.63; // C
-    KeyOscillators['S'          ].frequency = 277.18; // C#
-    KeyOscillators['X'          ].frequency = 293.66; // D
-    KeyOscillators['D'          ].frequency = 311.13; // D#
-    KeyOscillators['C'          ].frequency = 329.63; // E
-    KeyOscillators['V'          ].frequency = 349.23; // F
-    KeyOscillators['G'          ].frequency = 369.99; // F#
-    KeyOscillators['B'          ].frequency = 392.00; // G
-    KeyOscillators['H'          ].frequency = 415.30; // G#
-    KeyOscillators['N'          ].frequency = 440.00; // A
-    KeyOscillators['J'          ].frequency = 466.16; // A#
-    KeyOscillators['M'          ].frequency = 493.88; // B
-    KeyOscillators[VK_OEM_COMMA ].frequency = 523.25; // C
-    KeyOscillators['L'          ].frequency = 554.37; // C#
-    KeyOscillators[VK_OEM_PERIOD].frequency = 587.33; // D
-    KeyOscillators[VK_OEM_1     ].frequency = 622.25; // D# ';'
-    KeyOscillators[VK_OEM_2     ].frequency = 659.25; // E  '/'
-
-    log("Use keyboard for sounds (ESC to exit)");
-    flushLog();
-
-LinputLoop:
-    while(true)
-    {
-        uint inputCount;
-        if(ReadConsoleInputA(stdin.asHandle, inputBuffer.ptr, inputBuffer.length, &inputCount).failed)
-        {
-            logError("Error: ReadConsoleInput failed, e=", GetLastError());
-            SetConsoleMode(stdin.asHandle, oldMode);
-            return 1;
-        }
-
-        //logDebug("Handling ", inputCount, " input events...");
-        foreach(i; 0 .. inputCount)
-        {
-            switch(inputBuffer[i].type)
-            {
-            case EventType.key: {
-                /*
-                logDebug("KeyEvent code=", inputBuffer[i].key.keyCode
-                    , " ", inputBuffer[i].key.down ? "down" : "up"
-                );
-                printf("KeyEvent code=%d 0x%x ascii=%c '%s' state=%d\n",
-                inputBuffer[i].key.keyCode,
-                inputBuffer[i].key.keyCode,
-                inputBuffer[i].key.asciiChar,
-                inputBuffer[i].key.down ? "down" : "up",
-                inputBuffer[i].key.controlKeyState);
-                */
-                const code = inputBuffer[i].key.keyCode;
-
-                // Quit from ESCAPE or CTL-C
-                if((code == VK_ESCAPE) ||
-                    (code == 'C' &&
-                    (inputBuffer[i].key.controlKeyState & (LEFT_CTRL_PRESSED |
-                    RIGHT_CTRL_PRESSED))))
-                {
-                    break LinputLoop;
-                }
-
-                if(inputBuffer[i].key.down)
-                {
-                    AcquireSRWLockExclusive(&global.renderLock);
-                    scope (exit) ReleaseSRWLockExclusive(&global.renderLock);
-                    if(KeyOscillators[code].oscillator.base.state >= RenderState.release)
-                    {
-                        char needToAdd = KeyOscillators[code].oscillator.base.state == RenderState.done;
-                        KeyOscillators[code].oscillator.base.state = RenderState.sustain;
-
-                        if(KeyOscillators[code].frequency == 0)
-                        {
-                            log("Key code ", code, " ", code.formatHex, " '", cast(char)code, "' has no frequency");
-                        }
-                        else
-                        {
-                            //printf("Key code %d 0x%x '%c' has frequency %f\n", code, code, (char)code,
-                            //KeyOscillators[code].frequency);
-                            if(global.audioFormatID == WaveFormatTag.pcm)
-                            {
-                                KeyOscillators[code].oscillator.initPcm16(KeyOscillators[code].frequency, .2);
-                            }
-                            else if(global.audioFormatID == WaveFormatTag.float_)
-                            {
-                                KeyOscillators[code].oscillator.initFloat(KeyOscillators[code].frequency, .2);
-                            }
-                            else
-                            {
-                                logError("unsupported audio format ", global.audioFormatID);
-                                return 1;
-                            }
-                            if(needToAdd)
-                                addRenderer(&(KeyOscillators[code].oscillator.base));
-                        }
-                    }
-                }
-                else
-                {
-                    AcquireSRWLockExclusive(&global.renderLock);
-                    scope (exit) ReleaseSRWLockExclusive(&global.renderLock);
-                    if(KeyOscillators[code].frequency == 0)
-                        KeyOscillators[code].oscillator.base.state = RenderState.done;
-                    else
-                        KeyOscillators[code].oscillator.base.state = RenderState.release;
-                }
-
-            }
-            break;
-            case EventType.mouse:
-                //printf("mouse event!\n");
-                break;
-            case EventType.focus:
-                break;
-            default:
-                logDebug("unhandled event: ", inputBuffer[i].type);
-                break;
-            }
-        }
-    }
-
-    return 0;
 }
 
 void dumpWaveFormat(WaveFormatExtensible* waveFormat)
@@ -504,42 +338,4 @@ void dumpWaveFormat(WaveFormatExtensible* waveFormat)
     logDebug("offsetof subFormat=", waveFormat.subFormat.offsetof);
 }
 
-// Temporary function to implement a computer music keyboard
-ubyte shim()
-{
-    import mar.windows.kernel32 : CreateThread;
-    import mar.windows.winmm : WaveoutOpenFlags, WAVE_MAPPER;
-
-    InitializeSRWLock(&global.renderLock);
-
-    /*
-    dumpWaveFormat(&global.waveFormat);
-    logDebug("WAVE_MAPPER=", WAVE_MAPPER);
-    logDebug("WaveoutOpenFlags.callbackFunction=", WaveoutOpenFlags.callbackFunction);
-    */
-    const result = waveOutOpen(&waveOut,
-        WAVE_MAPPER,
-        &global.waveFormat.format,
-        cast(void*)&waveOutCallback,
-        null,
-        WaveoutOpenFlags.callbackFunction);
-    if(result.failed)
-    {
-        //printf("waveOutOpen failed (result=%d '%s')\n", result, getMMRESULTString(result));
-        logError("waveOutOpen failed, result=", result);
-        return 1;
-    }
-
-    auto audioWriteThread = CreateThread(null,
-        0,
-        &audioWriteLoop,
-        null,
-        0,
-        null);
-
-    readNotes();
-    waveOutClose(waveOut);
-
-    return 0;
-}
 

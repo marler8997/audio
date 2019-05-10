@@ -75,7 +75,7 @@ byte setAudioFormatAndBufferConfig(AudioFormat format,
   waveFormat.Format.nChannels       = channelCount;
 
   waveFormat.Format.nAvgBytesPerSec = SAMPLE_BYTE_LENGTH * samplesPerSecond;
-  
+
   if(format == WAVE_FORMAT_PCM) {
     waveFormat.Format.wFormatTag      = WAVE_FORMAT_PCM;
     waveFormat.Format.cbSize          = 0; // Size of extra info
@@ -89,16 +89,16 @@ byte setAudioFormatAndBufferConfig(AudioFormat format,
     printf("Unsupported format %d\n", format);
     return 1;
   }
-  
+
   // Setup Buffers
   bufferSampleCount = bufferSampleCount_;
   bufferByteLength = bufferSampleCount_ * SAMPLE_BYTE_LENGTH;
-  
+
   for(int i = 0; i < 2; i++) {
     if(headers[i].hdr.lpData) {
       free(headers[i].hdr.lpData);
     }
-    
+
     headers[i].hdr.dwBufferLength = bufferByteLength;
     headers[i].hdr.lpData = (LPSTR)malloc(bufferByteLength);
     if(headers[i].hdr.lpData == NULL) {
@@ -152,86 +152,86 @@ void CALLBACK waveOutCallback(HWAVEOUT waveOut, UINT msg, DWORD_PTR instance,
 
 DWORD CALLBACK audioWriteLoop(LPVOID param)
 {
-  /*
-  // Set priority
-  if(!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
+    /*
+    // Set priority
+    if(!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
     printf("SetPriorityClass failed\n");
     return 1;
-  }
-  */
-
-  printf("Expected write time %.1f ms\n", (float)BUFFER_SAMPLE_COUNT * 1000.0 / (float)SAMPLES_PER_SECOND);
-
-  LARGE_INTEGER start, finish;
-
-  //headers[0].hdr.lpData = bufferConfig.render;
-  //headers[1].hdr.lpData = bufferConfig.active;
-  
-  // Write the first buffer
-  PLATFORM_ZERO_MEM(headers[1].hdr.lpData, BUFFER_BYTE_LENGTH); // Zero out memory for last buffer
-  activeBuffer = (byte*)headers[1].hdr.lpData;
-  renderBuffer = (byte*)headers[0].hdr.lpData;
-  render(); // renders to header[0] (bufferConfig.render)
-  waveOutPrepareHeader(waveOut, &headers[0].hdr, sizeof(WAVEHDR)); // IS THIS CALL NECESSARY?
-  if(!ResetEvent(headers[0].freeEvent)) {
-    printf("ResetEvent failed (error=%d)\n", GetLastError());
-    return 1;
-  }
-  QueryPerformanceCounter(&headers[0].writeTime);
-  waveOutWrite(waveOut, &headers[0].hdr, sizeof(WAVEHDR));
-  
-  char lastBufferIndex = 0;
-  char bufferIndex     = 1;
-  
-  while(true) {
-    //printf("Rendering buffer %d\n", bufferIndex);
-
-    activeBuffer = (byte*)headers[lastBufferIndex].hdr.lpData;
-    renderBuffer = (byte*)headers[bufferIndex].hdr.lpData;
-    QueryPerformanceCounter(&start);
-    render();
-    QueryPerformanceCounter(&finish);
-    LONGLONG renderTime = finish.QuadPart - start.QuadPart;
-    
-    QueryPerformanceCounter(&start);
-    waveOutPrepareHeader(waveOut, &headers[bufferIndex].hdr, sizeof(WAVEHDR));
-    QueryPerformanceCounter(&finish);
-    LONGLONG prepareTime = finish.QuadPart - start.QuadPart;
-    
-    if(!ResetEvent(headers[bufferIndex].freeEvent)) {
-      printf("ResetEvent failed (error=%d)\n", GetLastError());
-      return 1;
     }
-
-    QueryPerformanceCounter(&headers[bufferIndex].writeTime);
-    waveOutWrite(waveOut, &headers[bufferIndex].hdr, sizeof(WAVEHDR));
-    
-    {
-      char temp = bufferIndex;
-      bufferIndex = lastBufferIndex;
-      lastBufferIndex = temp;
-    }    
-
-    QueryPerformanceCounter(&start);
-    WaitForSingleObject(headers[bufferIndex].freeEvent, INFINITE);
-    QueryPerformanceCounter(&finish);
-    LONGLONG waitTime = finish.QuadPart - start.QuadPart;
-
-    QueryPerformanceCounter(&start);
-    waveOutUnprepareHeader(waveOut, &headers[bufferIndex].hdr, sizeof(WAVEHDR));
-    QueryPerformanceCounter(&finish);
-    LONGLONG unprepareTime = finish.QuadPart - start.QuadPart;
-
-    /*
-    printf("Buffer %d stats render=%.1f ms, perpare=%.1f ms, write=%.1f ms, setEvent=%.1f ms, unprepare=%.1f ms, waited=%.1f ms\n", bufferIndex,
-	   renderTime * msPerTicks,
-	   prepareTime * msPerTicks,
-	   (headers[bufferIndex].setEventTime.QuadPart - headers[bufferIndex].writeTime.QuadPart) * msPerTicks,
-	   (finish.QuadPart - headers[bufferIndex].setEventTime.QuadPart) * msPerTicks,
-	   unprepareTime * msPerTicks,
-	   waitTime    * msPerTicks);
     */
-  }
+
+    printf("Expected write time %.1f ms\n", (float)BUFFER_SAMPLE_COUNT * 1000.0 / (float)SAMPLES_PER_SECOND);
+
+    LARGE_INTEGER start, finish;
+
+    //headers[0].hdr.lpData = bufferConfig.render;
+    //headers[1].hdr.lpData = bufferConfig.active;
+
+    // Write the first buffer
+    PLATFORM_ZERO_MEM(headers[1].hdr.lpData, BUFFER_BYTE_LENGTH); // Zero out memory for last buffer
+    activeBuffer = (byte*)headers[1].hdr.lpData;
+    renderBuffer = (byte*)headers[0].hdr.lpData;
+    render(); // renders to header[0] (bufferConfig.render)
+    waveOutPrepareHeader(waveOut, &headers[0].hdr, sizeof(WAVEHDR)); // IS THIS CALL NECESSARY?
+    if(!ResetEvent(headers[0].freeEvent)) {
+        printf("ResetEvent failed (error=%d)\n", GetLastError());
+        return 1;
+    }
+    QueryPerformanceCounter(&headers[0].writeTime);
+    waveOutWrite(waveOut, &headers[0].hdr, sizeof(WAVEHDR));
+
+    char lastBufferIndex = 0;
+    char bufferIndex     = 1;
+
+    while(true) {
+        //printf("Rendering buffer %d\n", bufferIndex);
+
+        activeBuffer = (byte*)headers[lastBufferIndex].hdr.lpData;
+        renderBuffer = (byte*)headers[bufferIndex].hdr.lpData;
+        QueryPerformanceCounter(&start);
+        render();
+        QueryPerformanceCounter(&finish);
+        LONGLONG renderTime = finish.QuadPart - start.QuadPart;
+
+        QueryPerformanceCounter(&start);
+        waveOutPrepareHeader(waveOut, &headers[bufferIndex].hdr, sizeof(WAVEHDR));
+        QueryPerformanceCounter(&finish);
+        LONGLONG prepareTime = finish.QuadPart - start.QuadPart;
+
+        if(!ResetEvent(headers[bufferIndex].freeEvent)) {
+            printf("ResetEvent failed (error=%d)\n", GetLastError());
+            return 1;
+        }
+
+        QueryPerformanceCounter(&headers[bufferIndex].writeTime);
+        waveOutWrite(waveOut, &headers[bufferIndex].hdr, sizeof(WAVEHDR));
+
+        {
+            char temp = bufferIndex;
+            bufferIndex = lastBufferIndex;
+            lastBufferIndex = temp;
+        }
+
+        QueryPerformanceCounter(&start);
+        WaitForSingleObject(headers[bufferIndex].freeEvent, INFINITE);
+        QueryPerformanceCounter(&finish);
+        LONGLONG waitTime = finish.QuadPart - start.QuadPart;
+
+        QueryPerformanceCounter(&start);
+        waveOutUnprepareHeader(waveOut, &headers[bufferIndex].hdr, sizeof(WAVEHDR));
+        QueryPerformanceCounter(&finish);
+        LONGLONG unprepareTime = finish.QuadPart - start.QuadPart;
+
+        /*
+        printf("Buffer %d stats render=%.1f ms, perpare=%.1f ms, write=%.1f ms, setEvent=%.1f ms, unprepare=%.1f ms, waited=%.1f ms\n", bufferIndex,
+        renderTime * msPerTicks,
+        prepareTime * msPerTicks,
+        (headers[bufferIndex].setEventTime.QuadPart - headers[bufferIndex].writeTime.QuadPart) * msPerTicks,
+        (finish.QuadPart - headers[bufferIndex].setEventTime.QuadPart) * msPerTicks,
+        unprepareTime * msPerTicks,
+        waitTime    * msPerTicks);
+        */
+    }
 }
 
 // 0 = success
@@ -244,7 +244,7 @@ char readNotes()
     printf("Error: GetStdHandle failed\n");
     return 1;
   }
-  
+
   // Save old input mode
   DWORD oldMode;
   if(!GetConsoleMode(stdinHandle, &oldMode)) {
@@ -286,10 +286,10 @@ char readNotes()
   KeyOscillators[VK_OEM_PERIOD].frequency = 587.33; // D
   KeyOscillators[VK_OEM_1     ].frequency = 622.25; // D# ';'
   KeyOscillators[VK_OEM_2     ].frequency = 659.25; // E  '/'
-  
+
   printf("Use keyboard for sounds (ESC to exit)\n");
   fflush(stdout);
-  
+
   BOOL continueLoop = true;
   while(continueLoop) {
     DWORD inputCount;
@@ -357,7 +357,7 @@ char readNotes()
 	  }
 	  ReleaseSRWLockExclusive(&renderLock);
 	}
-	
+
       }
 	break;
       case MOUSE_EVENT:
@@ -378,7 +378,7 @@ char readNotes()
 byte shim()
 {
   MMRESULT result;
-  
+
   InitializeSRWLock(&renderLock);
   /*
   printf("[DEBUG] WaveFormat:\n");
@@ -429,9 +429,9 @@ byte shim()
 					 0);
 
   readNotes();
-  
+
   waveOutClose(waveOut);
-  
+
   return 0;
 }
 

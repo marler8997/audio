@@ -3,7 +3,7 @@
 #include <windows.h>
 #include <mmreg.h>
 
-#include "waveout.h"
+//#include "waveout.h"
 
 // Define the standard types
 typedef unsigned char byte;
