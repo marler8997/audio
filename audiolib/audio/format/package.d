@@ -1,5 +1,9 @@
 module audio.format;
 
+import mar.passfail;
+
+import audio.log;
+
 //alias CurrentFormat = Pcm16Format;
 alias CurrentFormat = FloatFormat;
 
@@ -25,6 +29,8 @@ struct Pcm16Format
     }
 }
 
+enum SampleKind { int_, float_ }
+
 struct FloatFormat
 {
     alias SampleType = float;
@@ -45,5 +51,42 @@ struct FloatFormat
             dst[2*i+0] = src[i];
             dst[2*i+1] = src[i];
         }
+    }
+    static passfail copyConvert(float* dst, void* src, SampleKind kind, uint samplesPerSec, size_t sampleCount, ubyte channelCount, ubyte sampleSize)
+    {
+        static import audio.backend;
+        if (samplesPerSec != audio.backend.samplesPerSec)
+        {
+            logError("Converting between frequencies ", samplesPerSec, " to ",
+                audio.backend.samplesPerSec, " is not implemented");
+            return passfail.fail;
+        }
+        foreach (i; 0 .. sampleCount)
+        {
+            foreach (channel; 0 .. channelCount)
+            {
+                switch(kind)
+                {
+                    case SampleKind.int_:
+                        if (sampleSize == 2)
+                            dst[0] = cast(float)*cast(ushort*)src;
+                        else
+                        {
+                            logError("format not supported yet");
+                            return passfail.fail;
+                        }
+                        break;
+                    case SampleKind.float_:
+                        logError("format not supported yet");
+                        return passfail.fail;
+                    default:
+                        logError("codebug");
+                        return passfail.fail;
+                }
+                src += sampleSize;
+                dst++;
+            }
+        }
+        return passfail.pass;
     }
 }
