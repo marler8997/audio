@@ -15,7 +15,7 @@ struct OscillatorInstrument
     import audio.render : RenderState;
     import audio.midi : MidiNote;
 
-    UniqueSinOscillator[MidiNote.max] oscillators;
+    UniqueSinOscillator[MidiNote.max + 1] oscillators;
     this(bool placeholder)
     {
         import audio.midi : standardFrequencies;

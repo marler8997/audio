@@ -5,6 +5,7 @@ import mar.math : sin;
 
 import audio.log;
 import audio.format : CurrentFormat;
+import audio.dag : RootRenderNode;
 import backend = audio.backend;
 
 enum TWO_PI = 3.14159265358979 * 2;
@@ -73,31 +74,45 @@ void renderSin(Format)(SinOscillator* o, void* block, const void* limit)
 struct Global
 {
     import mar.arraybuilder : ArrayBuilder;
-    import mar.windows.types : SRWLock;
-
-    SRWLock lock;
+    version (Windows)
+    {
+        import mar.windows.types : SRWLock;
+        SRWLock lock;
+    }
     ArrayBuilder!(AudioRenderer!void*) renderers;
+    ArrayBuilder!(RootRenderNode!void*) rootRenderNodes;
 }
 __gshared Global global;
 
 passfail renderPlatformInit()
 {
-    import mar.windows.kernel32 : InitializeSRWLock;
-    InitializeSRWLock(&global.lock);
+    version (Windows)
+    {
+        import mar.windows.kernel32 : InitializeSRWLock;
+        InitializeSRWLock(&global.lock);
+    }
     return passfail.pass;
 }
 
 final void enterRenderCriticalSection()
 {
-    import mar.windows.kernel32 : AcquireSRWLockExclusive;
     pragma(inline, true);
-    AcquireSRWLockExclusive(&global.lock);
+
+    version (Windows)
+    {
+        import mar.windows.kernel32 : AcquireSRWLockExclusive;
+        AcquireSRWLockExclusive(&global.lock);
+    }
 }
 final void exitRenderCriticalSection()
 {
-    import mar.windows.kernel32 : ReleaseSRWLockExclusive;
     pragma(inline, true);
-    ReleaseSRWLockExclusive(&global.lock);
+
+    version (Windows)
+    {
+        import mar.windows.kernel32 : ReleaseSRWLockExclusive;
+        ReleaseSRWLockExclusive(&global.lock);
+    }
 }
 
 void addRenderer(T)(AudioRenderer!T* renderer)
@@ -110,6 +125,24 @@ void addRenderer(AudioRenderer!void* renderer)
     enterRenderCriticalSection();
     scope (exit) exitRenderCriticalSection();
     auto result = global.renderers.tryPut(renderer);
+    if (result.failed)
+    {
+        logError("failed to add renderer: ", result);
+        assert(0);
+    }
+    //printf("Added a renderer (there are now %d renderers)\n", currentRendererCount);
+}
+
+void addRootRenderNode(T)(RootRenderNode!T* renderer)
+{
+    addRootRenderNode(cast(RootRenderNode!void*)renderer);
+}
+void addRootRenderNode(RootRenderNode!void* renderer)
+{
+    import mar.mem : realloc;
+    enterRenderCriticalSection();
+    scope (exit) exitRenderCriticalSection();
+    auto result = global.rootRenderNodes.tryPut(renderer);
     if (result.failed)
     {
         logError("failed to add renderer: ", result);
@@ -139,6 +172,11 @@ void render(void* buffer, const void* limit)
             i--; // rewind
         }
     }
+    for (size_t i = 0; i < global.rootRenderNodes.length; i++)
+    {
+        auto node = global.rootRenderNodes[i];
+        node.renderNextBuffer(node, buffer, limit);
+    }
 }
 
 extern (Windows) uint renderThread(void* param)
@@ -157,8 +195,6 @@ extern (Windows) uint renderThread(void* param)
 passfail renderLoop(Format)(uint bufferSampleCount)
 {
     import mar.mem : malloc, free;
-    import mar.time;
-    import mar.windows.kernel32 : WaitForSingleObject;
 
     const renderBufferSize = bufferSampleCount * Format.SampleType.sizeof;
     logDebug("renderBufferSize ", renderBufferSize);

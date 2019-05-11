@@ -120,7 +120,6 @@ enum MidiNote : ubyte
     f9      = 125,
     g9      = 126,
     gsharp9 = 127,
-    a9      = 128,
 }
 
 __gshared immutable float[256] standardFrequencies = [
@@ -252,5 +251,135 @@ __gshared immutable float[256] standardFrequencies = [
     MidiNote.f9      : 11175.30,
     MidiNote.g9      : 11839.82,
     MidiNote.gsharp9 : 12543.85,
-    MidiNote.a9      : 13289.75,
 ];
+
+
+enum MidiMsgCategory
+{
+    noteOff = 0x80,
+    noteOn  = 0x90,
+    localAftertouch = 0xa0,
+    control = 0xb0,
+    program = 0xc0,
+    globalAftertouch = 0xd0,
+    pitchBend = 0xe0,
+}
+enum MidiControlCode
+{
+    sustainPedal = 64,
+}
+
+struct MidiNoteMap(T, string noteMember)
+{
+    import mar.array : StaticArray;
+
+    private StaticArray!(T, MidiNote.max + 1) array;
+    private ubyte[MidiNote.max + 1] indexTable;
+
+    void init()
+    {
+        import mar.mem : memset;
+        memset(indexTable.ptr, ubyte.max, indexTable.length);
+    }
+    auto length() const { return array.length; }
+    auto asArray() inout { return array.data; }
+    auto tryGetRef(MidiNote note) inout
+    {
+        auto index = indexTable[note];
+        return (index == ubyte.max) ? null : &array[index];
+    }
+    auto get(MidiNote note, T default_) inout
+    {
+        auto index = indexTable[note];
+        return (index == ubyte.max) ? default_ : array[index];
+    }
+
+    static if (noteMember !is null)
+    {
+        void set(T data)
+        {
+            auto index = indexTable[mixin("data" ~ noteMember)];
+            if (index != ubyte.max)
+            {
+                array[index] = data;
+            }
+            else
+            {
+                index = cast(byte)array.length;
+                indexTable[mixin("data" ~ noteMember)] = index;
+                array.tryPut(data).enforce();
+            }
+        }
+        // Returns: index the note was in, ubyte.max if it's not added
+        ubyte remove(MidiNote note)
+        {
+            const index = indexTable[note];
+            if (index != ubyte.max)
+            {
+                indexTable[note] = ubyte.max;
+                array.removeAt(index);
+                foreach (i; index .. array.length)
+                {
+                    indexTable[mixin("array[i]" ~ noteMember)]--;
+                }
+            }
+            return index;
+        }
+        ubyte removeAt(ubyte index)
+        in {
+            assert(index < array.length);
+            assert(indexTable[mixin("array[index]" ~ noteMember)] == index);
+        } do
+        {
+            indexTable[mixin("array[index]" ~ noteMember)] = ubyte.max;
+            array.removeAt(index);
+            foreach (i; index .. array.length)
+            {
+                indexTable[mixin("array[i]" ~ noteMember)]--;
+            }
+            return index;
+        }
+    }
+    else
+    {
+        void set(MidiNote note, T data)
+        {
+            auto index = indexTable[note];
+            if (index != ubyte.max)
+            {
+                array[index] = data;
+            }
+            else
+            {
+                index = cast(byte)array.length;
+                indexTable[note] = index;
+                array.tryPut(data).enforce();
+            }
+        }
+    }
+}
+
+unittest
+//void unittest1()
+{
+    {
+        MidiNoteMap!(MidiNote, "") map;
+        map.init();
+        map.set(MidiNote.c4);
+        map.set(MidiNote.csharp4);
+        map.set(MidiNote.d4);
+
+        assert(MidiNote.c4 == map.get(MidiNote.c4, MidiNote.none));
+        assert(MidiNote.csharp4 == map.get(MidiNote.csharp4, MidiNote.none));
+        assert(MidiNote.d4 == map.get(MidiNote.d4, MidiNote.none));
+
+        assert(0 == map.remove(MidiNote.c4));
+        assert(MidiNote.csharp4 == map.get(MidiNote.csharp4, MidiNote.none));
+        assert(MidiNote.d4 == map.get(MidiNote.d4, MidiNote.none));
+
+        assert(0 == map.remove(MidiNote.csharp4));
+        assert(MidiNote.d4 == map.get(MidiNote.d4, MidiNote.none));
+
+        assert(0 == map.remove(MidiNote.d4));
+    }
+}

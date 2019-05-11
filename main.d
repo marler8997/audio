@@ -1,24 +1,18 @@
 module _none;
 
-import mar.windows.waveout : WaveFormatTag;
-
 import audio.log;
 import audio.render;
-import audio.backend.waveout;
+import audio.backend : AudioFormat;
+static import audio.backend;
 
-
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// REMOVEME
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!
-import audio.windowsmidi;
-
-
-int main(string[] args)
+extern (C) int main(string[] args)
 {
+    //{import audio.midi : unittest1; unittest1(); }
+
     // This should always be done first thing
     if(renderPlatformInit().failed)
         return 1;
-    if(audio.backend.waveout.platformInit().failed)
+    if(audio.backend.platformInit().failed)
         return 1;
 
     {
@@ -48,7 +42,7 @@ int main(string[] args)
     import audio.format : CurrentFormat, Pcm16Format, FloatFormat;
     static if (is(CurrentFormat == Pcm16Format))
     {
-        if(setAudioFormatAndBufferConfig(WaveFormatTag.pcm,
+        if(audio.backend.setAudioFormatAndBufferConfig(AudioFormat.pcm,
             44100, // samplesPerSecond
             //48000, // samplesPerSecond
             16,    // channelSampleBitLength
@@ -62,7 +56,7 @@ int main(string[] args)
     }
     else static if (is(CurrentFormat == FloatFormat))
     {
-        if(setAudioFormatAndBufferConfig(WaveFormatTag.float_,
+        if(audio.backend.setAudioFormatAndBufferConfig(AudioFormat.float_,
             48000, // samplesPerSecond
             32,    // channelSampleBitLength
             2,     // channelCount
@@ -72,19 +66,71 @@ int main(string[] args)
             //441); // bufferSampleCount (about 10 ms)
             return 1;
     }
-    return go();
+
+
+    //return go();
+    return go2();
 }
 
+void waitForEnterKey()
+{
+    import mar.stdio;
+    char[8] buffer;
+    auto result = stdin.read(buffer);
+}
+
+int go2()
+{
+    version (Windows)
+        import mar.windows.kernel32 : CreateThread;
+
+    import audio.format : CurrentFormat;
+    import audio.dag;
+    import backend = audio.backend;
+
+    //auto midiInstrument = SinMidiInstrument!CurrentFormat();
+    //auto midiInstrument = MidiInstrumentTypeA!(SinOscillatorMidiInstrumentTypeA!CurrentFormat)();
+    auto midiInstrument = MidiInstrumentTypeA!(SawOscillatorMidiInstrumentTypeA!CurrentFormat)();
+    midiInstrument.init();
+    auto midiInput = MidiInputNode();
+    midiInput.init();
+    midiInput.tryAddInstrument(midiInstrument.asBase).enforce();
+    midiInput.startMidiDeviceInput(0); // just hardcode device 0 for now
+    addRootRenderNode(midiInput.asBase);
+
+    backend.open();
+    import audio.render : renderThread;
+    version (Windows)
+    {
+    auto audioWriteThread = CreateThread(null,
+        0,
+        &renderThread,
+        null,
+        0,
+        null);
+    }
+
+    log("Press enter to stop");
+    flushLog();
+    waitForEnterKey();
+
+    backend.close();
+    midiInput.stopMidiDeviceInput();
+    return 0;
+}
 
 version = UseMidiInstrument;
 ubyte go()
 {
-    import mar.windows.kernel32 : CreateThread;
-    import mar.windows.winmm : MuitlmediaOpenFlags, WAVE_MAPPER;
+    version (Windows)
+    {
+        import mar.windows.kernel32 : CreateThread;
+        import mar.windows.winmm : MuitlmediaOpenFlags, WAVE_MAPPER;
+    }
 
     import audio.format : CurrentFormat;
-    import backend = audio.backend.waveout;
-    import audio.backend.waveout;
+    import backend = audio.backend;
+    import audio.backend;
 
     /*
     {
@@ -113,17 +159,27 @@ ubyte go()
     */
     backend.open();
     import audio.render : renderThread;
-    auto audioWriteThread = CreateThread(null,
-        0,
-        &renderThread,
-        null,
-        0,
-        null);
+    version (Windows)
+    {
+        auto audioWriteThread = CreateThread(null,
+            0,
+            &renderThread,
+            null,
+            0,
+            null);
+    }
 
     version(UseMidiInstrument)
     {
-        static import audio.windowsmidiinstrument;
-        audio.windowsmidiinstrument.readNotes!CurrentFormat(0);
+        version (Windows)
+        {
+            static import audio.windowsmidiinstrument;
+            audio.windowsmidiinstrument.readNotes!CurrentFormat(0);
+        }
+        else
+        {
+            logError("midi not implemented on this platform");
+        }
     }
     else
     {

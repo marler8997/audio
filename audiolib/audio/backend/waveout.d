@@ -169,28 +169,19 @@ passfail writeBuffer(Format)(void* renderBuffer)
 // ========================================================================================
 
 __gshared long performanceFrequency;
-__gshared float msPerTicks;
+//__gshared float msPerTicks;
 
 // Macros that need to be defined by the audio format
 passfail platformInit()
 {
     import mar.mem : zero;
-
-    // Setup Headers
-    /*
-    for(int i = 0; i < 1; i++)
-    {
-        zero(&headers[i], headers[0].sizeof);
-    }
-    */
-
     if(QueryPerformanceFrequency(&performanceFrequency).failed)
     {
         logError("QueryPerformanceFrequency failed");
         return passfail.fail;
     }
     //logDebug("performance frequency: ", performanceFrequency);
-    msPerTicks = 1000.0 / cast(float)performanceFrequency;
+    //msPerTicks = 1000.0 / cast(float)performanceFrequency;
 
     return passfail.pass;
 }
@@ -267,14 +258,6 @@ ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
     }
 
     return 0;
-}
-
-void waitForKey(cstring msg)
-{
-    import core.stdc.stdio : getchar;
-    logError("Press enter to ", msg);
-    flushErrors();
-    getchar();
 }
 
 extern (Windows) void waveOutCallback(WaveoutHandle waveOut, uint msg, uint* instance,

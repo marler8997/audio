@@ -1184,21 +1184,29 @@ import mar.c : cstring;
 AEffect* loadPlugin(cstring path, audioMasterCallback hostCallback)
 {
     import mar.sentinel : lit;
-    import mar.windows.kernel32 : GetLastError, LoadLibraryA, GetProcAddress;
+    version (Windows)
+        import mar.windows.kernel32 : GetLastError, LoadLibraryA, GetProcAddress;
     import audio.log;
     logDebug("loadPlugin: ", path);
 
-    auto mod = LoadLibraryA(path);
-    if (mod.isNull)
+    version (Windows)
     {
-        logError("LoadLibrary '", path, "' failed, e=", GetLastError());
-        return null; // fail
+        auto mod = LoadLibraryA(path);
+        if (mod.isNull)
+        {
+            logError("LoadLibrary '", path, "' failed, e=", GetLastError());
+            return null; // fail
+        }
+        auto vstPluginMain = cast(VSTPluginMainFunc)GetProcAddress(mod, lit!"VSTPluginMain".ptr);
+        if (!vstPluginMain)
+        {
+            logError("GetProcAddress on '", path, "' for 'VSTPluginMain' failed, e=", GetLastError());
+            return null; // fail
+        }
+        return vstPluginMain(hostCallback);
     }
-    auto vstPluginMain = cast(VSTPluginMainFunc)GetProcAddress(mod, lit!"VSTPluginMain".ptr);
-    if (!vstPluginMain)
+    else
     {
-        logError("GetProcAddress on '", path, "' for 'VSTPluginMain' failed, e=", GetLastError());
-        return null; // fail
+        return null;
     }
-    return vstPluginMain(hostCallback);
 }

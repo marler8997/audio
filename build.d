@@ -1,8 +1,17 @@
 #!/usr/bin/env rund
 import core.stdc.stdlib : exit;
-import std.path : buildPath, dirName;
+import std.path : buildPath, buildNormalizedPath, dirName;
 import std.file : exists;
 import std.stdio;
+
+version (Windows)
+{
+    enum exeExt = ".exe";
+}
+else
+{
+    enum exeExt = "";
+}
 
 void run(string[] args)
 {
@@ -26,7 +35,6 @@ string findprog(string prog)
         const result = execute(["which", prog]);
     if (result.status != 0)
     {
-
         writefln("Failed to find program '%s'", prog);
         writeln(result.output);
         exit(1);
@@ -34,20 +42,16 @@ string findprog(string prog)
     return result.output.lineSplitter.front.strip();
 }
 
-string relpath(T...)(T parts)
-{
-    return buildPath(dirName(__FILE_FULL_PATH__), parts);
-}
-string gitpath(T...)(T parts)
-{
-    import std.path : buildPath, dirName;
-    return buildPath(dirName(dirName(__FILE_FULL_PATH__)), parts);
-}
+immutable thisRepoPath = dirName(buildNormalizedPath(__FILE_FULL_PATH__));
+immutable gitPath = dirName(thisRepoPath);
+
+string relpath(T...)(T parts) { return buildPath(thisRepoPath, parts); }
+string gitpath(T...)(T parts) { return buildPath(gitPath, parts); }
 
 int main(string[] args)
 {
     auto dc = findprog("dmd");
-    
+
     const marRepo = gitpath("mar");
     if (!exists(marRepo))
     {
@@ -59,11 +63,12 @@ int main(string[] args)
     run([dc
         , "-betterC"
         //,"-v" // verbose
+        //,"-unittest"
         ,"-g", "-debug"
         // NOTE: using m32mscoff allows you to debug with visual studio
         //       however, it requires access to the MSVC linker
         //, "-m32mscoff"
-        ,"-of=" ~ relpath("audio.exe")
+        ,"-of=" ~ relpath("audio" ~ exeExt)
         , "-I=" ~ marInclude
         , "-I=" ~ relpath("audiolib")
         , "-i", relpath("main.d")
