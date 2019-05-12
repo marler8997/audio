@@ -4,8 +4,7 @@ import mar.passfail;
 
 import audio.log;
 
-//alias CurrentFormat = Pcm16Format;
-alias CurrentFormat = FloatFormat;
+enum SampleKind { int_, float_ }
 
 struct Pcm16Format
 {
@@ -28,9 +27,6 @@ struct Pcm16Format
         }
     }
 }
-
-enum SampleKind { int_, float_ }
-
 struct FloatFormat
 {
     alias SampleType = float;

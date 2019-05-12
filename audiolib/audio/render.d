@@ -4,7 +4,8 @@ import mar.passfail;
 import mar.math : sin;
 
 import audio.log;
-import audio.format : CurrentFormat;
+static import audio.global;
+import audio.renderformat;
 import audio.dag : RootRenderNode;
 import backend = audio.backend;
 
@@ -188,7 +189,7 @@ extern (Windows) uint renderThread(void* param)
     return 1;
     }
     */
-    renderLoop!CurrentFormat(backend.bufferSampleCount);
+    renderLoop!RenderFormat(backend.bufferSampleCount);
     return 0;
 }
 

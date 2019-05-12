@@ -1,6 +1,11 @@
 module _none;
 
+import mar.from;
+import mar.passfail;
+
 import audio.log;
+static import audio.global;
+import audio.renderformat;
 import audio.render;
 import audio.backend : AudioFormat;
 static import audio.backend;
@@ -14,6 +19,10 @@ extern (C) int main(string[] args)
         return 1;
     if(audio.backend.platformInit().failed)
         return 1;
+
+    audio.global.channelCount = 2;
+    //audio.global.samplesPerSec = 44100;
+    audio.global.samplesPerSec = 48000;
 
     {
         import mar.sentinel : lit;
@@ -39,34 +48,14 @@ extern (C) int main(string[] args)
     //       This is a limitation on waveOut API (which is pretty high level).
     //       To get better latency, I'll need to use CoreAudio.
     //
-    import audio.format : CurrentFormat, Pcm16Format, FloatFormat;
-    static if (is(CurrentFormat == Pcm16Format))
-    {
-        if(audio.backend.setAudioFormatAndBufferConfig(AudioFormat.pcm,
-            44100, // samplesPerSecond
-            //48000, // samplesPerSecond
-            16,    // channelSampleBitLength
-            2,     // channelCount
-            //44100)) // bufferSampleCount (about 1000 ms)
-            //4410)) // bufferSampleCount (about 100 ms)
-            2205)) // bufferSampleCount (about 50 ms)
-            //1664)) // bufferSampleCount (about 40 ms)
-            //441)) // bufferSampleCount (about 10 ms)
-            return 1;
-    }
-    else static if (is(CurrentFormat == FloatFormat))
-    {
-        if(audio.backend.setAudioFormatAndBufferConfig(AudioFormat.float_,
-            48000, // samplesPerSecond
-            32,    // channelSampleBitLength
-            2,     // channelCount
-            //4410); // bufferSampleCount (about 100 ms)
-            2205)) // bufferSampleCount (about 50 ms)
-            //1664); // bufferSampleCount (about 40 ms)
-            //441); // bufferSampleCount (about 10 ms)
-            return 1;
-    }
-
+    if(audio.backend.setAudioFormatAndBufferConfig(
+        //44100) // bufferSampleCount (about 1000 ms)
+        //4410) // bufferSampleCount (about 100 ms)
+        2205) // bufferSampleCount (about 50 ms)
+        //1664) // bufferSampleCount (about 40 ms)
+        //441) // bufferSampleCount (about 10 ms)
+    .failed)
+        return 1;
 
     //return go();
     return go2();
@@ -79,22 +68,81 @@ void waitForEnterKey()
     auto result = stdin.read(buffer);
 }
 
+
+passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument)
+{
+    import mar.mem : malloc, free;
+    import audio.midi : MidiNote;
+
+    immutable string[20] sampleFiles = [
+        "MF-e1.aif",
+        "MF-b1.aif",
+        "MF-d2.aif",
+        "MF-g2.aif",
+        "MF-c3.aif",
+        "MF-e3.aif",
+        "MF-g3.aif",
+        "MF-b3.aif",
+        "MF-dsharp4.aif",
+        "MF-g4.aif",
+        "MF-b4.aif",
+        "MF-dsharp5.aif",
+        "MF-g5.aif",
+        "MF-b5.aif",
+        "MF-d6.aif",
+        "MF-f6.aif",
+        "MF-a6.aif",
+        "MF-csharp7.aif",
+        "MF-fsharp7.aif",
+        "MF-asharp7.aif",
+    ];
+    auto samples = cast(RenderFormat.SampleType[]*)malloc((RenderFormat.SampleType[]).sizeof * (MidiNote.max + 1));
+    foreach (i, sampleBasename; sampleFiles)
+    {
+        import mar.print : sprintMallocSentinel;
+        import audio.format.aiff : loadAiffSample;
+
+        auto fullName = sprintMallocSentinel(r"D:\GrandPiano\", sampleBasename);
+        scope (exit) free(fullName.ptr.raw);
+        logDebug("loading '", fullName, "'...");
+        auto result = loadAiffSample(fullName.ptr);
+        if (result.failed)
+        {
+            logError("failed to load '", fullName, "': ", result);
+            return passfail.fail;
+        }
+        //samples[i] =
+    }
+    log("loadGrandPiano not implemented");
+    return passfail.fail;
+}
+
+//version = GrandPiano;
 int go2()
 {
     version (Windows)
         import mar.windows.kernel32 : CreateThread;
 
-    import audio.format : CurrentFormat;
     import audio.dag;
     import backend = audio.backend;
 
-    //auto midiInstrument = SinMidiInstrument!CurrentFormat();
-    //auto midiInstrument = MidiInstrumentTypeA!(SinOscillatorMidiInstrumentTypeA!CurrentFormat)();
-    auto midiInstrument = MidiInstrumentTypeA!(SawOscillatorMidiInstrumentTypeA!CurrentFormat)();
+
+    //auto midiInstrument = SinMidiInstrument!RenderFormat();
+    //auto midiInstrument = SinOscillatorMidiInstrument!RenderFormat();
+    auto midiInstrument = SawOscillatorMidiInstrument!RenderFormat();
     midiInstrument.init();
     auto midiInput = MidiInputNode();
     midiInput.init();
     midiInput.tryAddInstrument(midiInstrument.asBase).enforce();
+
+    version (GrandPiano)
+    {
+        SamplerMidiInstrument grandPiano;
+        if (loadGrandPiano(&grandPiano).failed)
+            return 1; // fail
+        midiInput.tryAddInstrument(grandPiano.asBase).enforce();
+    }
+
     midiInput.startMidiDeviceInput(0); // just hardcode device 0 for now
     addRootRenderNode(midiInput.asBase);
 
@@ -128,7 +176,6 @@ ubyte go()
         import mar.windows.winmm : MuitlmediaOpenFlags, WAVE_MAPPER;
     }
 
-    import audio.format : CurrentFormat;
     import backend = audio.backend;
     import audio.backend;
 
@@ -174,7 +221,7 @@ ubyte go()
         version (Windows)
         {
             static import audio.windowsmidiinstrument;
-            audio.windowsmidiinstrument.readNotes!CurrentFormat(0);
+            audio.windowsmidiinstrument.readNotes!RenderFormat(0);
         }
         else
         {
@@ -184,7 +231,7 @@ ubyte go()
     else
     {
         static import audio.pckeyboardinstrument;
-        audio.pckeyboardinstrument.readNotes!CurrentFormat();
+        audio.pckeyboardinstrument.readNotes!RenderFormat();
     }
     backend.close();
 

@@ -8,6 +8,7 @@ The revised version added the ability to specify compression.
 */
 module audio.format.aiff;
 
+import mar.aliasseq;
 import mar.expect;
 import mar.intfromchars : IntFromChars;
 import mar.endian : BigEndianOf, toBigEndian;
@@ -15,6 +16,7 @@ import mar.c : cstring;
 import mar.file : MMapResult;
 
 import audio.log;
+import audio.renderformat;
 
 enum AiffVersion : uint
 {
@@ -35,33 +37,45 @@ struct AiffFile
     short sampleSize;        // from COMM chunk
 }
 
-mixin ExpectMixin!("LoadAiffResult", void
-    , ErrorCase!("openFileFailed", "failed to open aiff file '%'", cstring)
-    , ErrorCase!("mmapFailed", "mmap of aiff file '%' failed: %", cstring, MMapResult)
+mixin ExpectMixin!("ParseAiffResult", void
     , ErrorCase!("notImplemented", "not implemented: %", string)
     , ErrorCase!("staticError", "%", string)
     , ErrorCase!("invalidFormSize", "invalid form size %, cannot fit in file of size %", uint, size_t)
     , ErrorCase!("unsupportedAifcVersion", "this version of AIFC (%) is not supported", uint)
 );
-LoadAiffResult parseAiff(AiffFile* aiffFile, ubyte[] fileData)
+
+// An audio sample that has already been converted to the native render format
+struct Sample
+{
+    RenderFormat.SampleType[] array;
+    ubyte channelCount;
+}
+mixin ExpectMixin!("LoadAiffResult",Sample
+    , ErrorCase!("notImplemented", "not implemented: %", string)
+    , ErrorCase!("staticError", "%", string)
+    , ErrorCase!("openFileFailed", "failed to open aiff file '%'", cstring)
+    , ErrorCase!("mmapFailed", "mmap of aiff file '%' failed: %", cstring, MMapResult)
+    , ErrorCase!("parseFailed", "parse '%' failed: %", cstring, ParseAiffResult)
+);
+ParseAiffResult parseAiff(AiffFile* aiffFile, ubyte[] fileData)
 {
     import mar.array : asDynamic, startsWith, acopy;
     import mar.serialize : deserializeBE;
     import mar.print : formatHex;
 
     if (fileData.length < 12)
-        return LoadAiffResult.staticError("file is too small");
+        return ParseAiffResult.staticError("file is too small");
     if (!fileData.startsWith("FORM"))
-        return LoadAiffResult.staticError("file does not begin with 'FORM'");
+        return ParseAiffResult.staticError("file does not begin with 'FORM'");
     const formSize = deserializeBE!uint(fileData.ptr + 4);
     if (formSize % 2 == 1)
-        return LoadAiffResult.notImplemented("odd form chunk size");
+        return ParseAiffResult.notImplemented("odd form chunk size");
 
     const formLimit = 8 + formSize;
     if (formLimit > fileData.length)
-        return LoadAiffResult.invalidFormSize(formSize, fileData.length);
+        return ParseAiffResult.invalidFormSize(formSize, fileData.length);
 
-    logDebug("FORM size ", formSize, " 0x", formSize.formatHex);
+    //logDebug("FORM size ", formSize, " 0x", formSize.formatHex);
 
     const formType = fileData[8 .. 12];
     bool versionDetermined = false;
@@ -71,7 +85,7 @@ LoadAiffResult parseAiff(AiffFile* aiffFile, ubyte[] fileData)
         aiffFile.version_ = AiffVersion.aiff;
     }
     else if (formType != "AIFC")
-        return LoadAiffResult.staticError("formType is niether 'AIFF' nor 'AIFC'");
+        return ParseAiffResult.staticError("formType is niether 'AIFF' nor 'AIFC'");
 
     static struct Chunk { size_t offset; size_t size; }
     Chunk commChunk = Chunk(0);
@@ -87,61 +101,61 @@ LoadAiffResult parseAiff(AiffFile* aiffFile, ubyte[] fileData)
         offset += 4;
         const chunkSize = deserializeBE!uint(fileData.ptr + offset);
         if (chunkSize % 2 == 1)
-            return LoadAiffResult.notImplemented("odd chunkSize, I think I need to pad it to get the start of the next chunk?");
+            return ParseAiffResult.notImplemented("odd chunkSize, I think I need to pad it to get the start of the next chunk?");
         offset += 4;
-        logDebug("chunk '", chunkID, "', data from ", offset, " to ", offset + chunkSize);
+        //logDebug("chunk '", chunkID, "', data from ", offset, " to ", offset + chunkSize);
 
         if (chunkID == "FVER") // required chunk
         {
             if (versionDetermined)
             {
                 if (aiffFile.version_ == AiffVersion.aiff)
-                    return LoadAiffResult.staticError("the original aiff format does not support the new FVER chunk");
-                return LoadAiffResult.staticError("multiple FVER chunks");
+                    return ParseAiffResult.staticError("the original aiff format does not support the new FVER chunk");
+                return ParseAiffResult.staticError("multiple FVER chunks");
             }
 
             if (chunkSize < 4)
-                return LoadAiffResult.staticError("FVER chunk is too small");
+                return ParseAiffResult.staticError("FVER chunk is too small");
             const value = deserializeBE!uint(fileData.ptr + offset);
             if (value == AiffVersion.aifc1)
                 aiffFile.version_ = AiffVersion.aifc1;
             else
-                return LoadAiffResult.unsupportedAifcVersion(value);
+                return ParseAiffResult.unsupportedAifcVersion(value);
             versionDetermined = true;
         }
         else if (chunkID == "COMM")
         {
             if (commChunk.offset != 0)
-                return LoadAiffResult.staticError("multiple COMM chunks");
+                return ParseAiffResult.staticError("multiple COMM chunks");
             commChunk.offset = offset;
             commChunk.size = chunkSize;
         }
         else if (chunkID == "SSND")
         {
             if (ssndChunk.offset != 0)
-                return LoadAiffResult.staticError("multiple SSND chunks");
+                return ParseAiffResult.staticError("multiple SSND chunks");
             ssndChunk.offset = offset;
             ssndChunk.size = chunkSize;
         }
         else
         {
-            logDebug("  this is an unrecognized chunk");
+            //logDebug("  this is an unrecognized chunk");
             //if (versionDetermined && aiffFile.version_ == AiffVersion.aiff)
             //    return "unrecognized chunk ID, aiff does not support this";
         }
 
         offset += chunkSize;
         if (offset > formLimit)
-            return LoadAiffResult.staticError("chunk overran the form");
+            return ParseAiffResult.staticError("chunk overran the form");
     }
 
     if (!versionDetermined)
-        return LoadAiffResult.staticError("AIFC file is missing the required FVER chunk");
+        return ParseAiffResult.staticError("AIFC file is missing the required FVER chunk");
 
     if (commChunk.offset == 0)
-        return LoadAiffResult.staticError("Missing the COMM chunk");
+        return ParseAiffResult.staticError("Missing the COMM chunk");
     if (ssndChunk.offset == 0)
-        return LoadAiffResult.staticError("Missing the SSND chunk");
+        return ParseAiffResult.staticError("Missing the SSND chunk");
 
     //
     // Parse the COMM chunk
@@ -149,47 +163,49 @@ LoadAiffResult parseAiff(AiffFile* aiffFile, ubyte[] fileData)
     if (aiffFile.version_ == AiffVersion.aiff)
     {
         if (commChunk.size < 18)
-            return LoadAiffResult.staticError("AIFF COMM chunk too small");
+            return ParseAiffResult.staticError("AIFF COMM chunk too small");
     }
     else
     {
         if (commChunk.size < 22)
-            return LoadAiffResult.staticError("AIFC COMM chunk too small");
+            return ParseAiffResult.staticError("AIFC COMM chunk too small");
     }
     aiffFile.numChannels = deserializeBE!short(fileData.ptr + commChunk.offset);
     aiffFile.numSampleFrames = deserializeBE!uint(fileData.ptr + commChunk.offset + 2);
     aiffFile.sampleSize = deserializeBE!short(fileData.ptr + commChunk.offset + 6);
     aiffFile.sampleRate = deserializeBE!real(fileData.ptr + commChunk.offset + 8);
+    /*
     logDebug(aiffFile.numChannels, " channel ",
         aiffFile.sampleSize, " bit ",
         cast(float)aiffFile.sampleRate, " Hz: ",
         aiffFile.numSampleFrames, " samples");
+    */
     if (aiffFile.version_ != AiffVersion.aiff)
     {
         acopy(aiffFile.compressionType.asDynamic, fileData.ptr + commChunk.offset + 18);
-        logDebug("compressionType '", aiffFile.compressionType, "'");
+        //logDebug("compressionType '", aiffFile.compressionType, "'");
         const compressionNameSize = commChunk.size - 22;
-        logDebug("compressionName '", fileData[commChunk.offset + 22 .. commChunk.offset + 22 + compressionNameSize], "'");
+        //logDebug("compressionName '", fileData[commChunk.offset + 22 .. commChunk.offset + 22 + compressionNameSize], "'");
     }
 
     //
     // Parse the SSND chunk
     //
     if (ssndChunk.size < 8)
-        return LoadAiffResult.staticError("SSND chunk too small");
+        return ParseAiffResult.staticError("SSND chunk too small");
     {
         uint offset = deserializeBE!uint(fileData.ptr + ssndChunk.offset);
         uint blockSize = deserializeBE!uint(fileData.ptr + ssndChunk.offset + 4);
         if (blockSize + 8 > ssndChunk.size)
-            return LoadAiffResult.staticError("SSND blockSize overran the chunk");
+            return ParseAiffResult.staticError("SSND blockSize overran the chunk");
         aiffFile.soundDataFileOffset = ssndChunk.offset + 8 + offset;
         if (blockSize != 0)
-            return LoadAiffResult.staticError("SSND non-zero blockSize not implemented");
+            return ParseAiffResult.staticError("SSND non-zero blockSize not implemented");
         aiffFile.soundDataSize = ssndChunk.size - 8 - offset;
-        logDebug("SSND fileOffset=", aiffFile.soundDataFileOffset, " size=", aiffFile.soundDataSize);
+        //logDebug("SSND fileOffset=", aiffFile.soundDataFileOffset, " size=", aiffFile.soundDataSize);
     }
 
-    return LoadAiffResult.success;
+    return ParseAiffResult.success;
 }
 
 auto loadAiffSample(cstring filename)
@@ -198,23 +214,24 @@ auto loadAiffSample(cstring filename)
     import mar.file : OpenAccess, OpenFileOpt, tryOpenFile,
         MMapAccess, mmap;
 
-    import audio.format : SampleKind, CurrentFormat;
+    import audio.format : SampleKind;
 
     auto file = tryOpenFile(filename, OpenFileOpt(OpenAccess.readOnly));
     if (!file.isValid)
         return LoadAiffResult.openFileFailed(filename);
+    // TODO: check return value of close
     scope (exit) file.close();
 
-    logDebug("opened '", filename, "'!");
     auto mmapResult = mmap(file, MMapAccess.readOnly, 0, 0);
     if (mmapResult.failed)
         return LoadAiffResult.mmapFailed(filename, mmapResult);
+    // TODO: check return value of close
     scope (exit) mmapResult.val.close();
 
     AiffFile aiffFile;
     auto parseResult = parseAiff(&aiffFile, mmapResult.val.mem);
     if (parseResult.failed)
-        return parseResult;
+        return LoadAiffResult.parseFailed(filename, parseResult);
 
     // Decompress Sound Data
     auto rawSoundData = mmapResult.val.mem[aiffFile.soundDataFileOffset .. aiffFile.soundDataSize];
@@ -232,44 +249,23 @@ auto loadAiffSample(cstring filename)
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     // Convert to the native format
-    auto convertedSize = aiffFile.numSampleFrames * aiffFile.numChannels * CurrentFormat.SampleType.sizeof;
-    auto converted = cast(CurrentFormat.SampleType*)malloc(convertedSize);
+    auto convertedSize = aiffFile.numSampleFrames * aiffFile.numChannels * RenderFormat.SampleType.sizeof;
+    auto converted = cast(RenderFormat.SampleType*)malloc(convertedSize);
     if (converted is null)
         return LoadAiffResult.staticError("out of memory");
     // Is all AIFF just PCM?
     // TODO: verify sampleRate can be casted to uint
     // TODO: verify that numChannels can be casted to ubyte
-    if (CurrentFormat.copyConvert(converted, decompressed.ptr, SampleKind.int_, cast(uint)aiffFile.sampleRate,
+    if (RenderFormat.copyConvert(converted, decompressed.ptr, SampleKind.int_, cast(uint)aiffFile.sampleRate,
         aiffFile.numSampleFrames, cast(ubyte)aiffFile.numChannels, cast(ubyte)(aiffFile.sampleSize / 8)).failed)
     {
         return LoadAiffResult.staticError("failed to convert AIFF audio to the native audio format");
     }
 
-    return LoadAiffResult.success;
+    return LoadAiffResult.success(Sample(converted[0 .. convertedSize], cast(ubyte)aiffFile.numChannels));
 }
 
 /+
-auto loadAiffExample(cstring filename)
-{
-    import mar.file : OpenAccess, OpenFileOpt, tryOpenFile,
-        MMapAccess, mmap;
-
-    auto file = tryOpenFile(filename, OpenFileOpt(OpenAccess.readOnly));
-    if (!file.isValid)
-        return LoadAiffResult.openFileFailed(filename);
-
-    logDebug("opened '", filename, "'!");
-    auto mmapResult = mmap(file, MMapAccess.readOnly, 0, 0);
-    if (mmapResult.failed)
-        return LoadAiffResult.mmapFailed(filename, mmapResult);
-
-    AiffFile aiffFile;
-    auto parseResult = parseAiff(&aiffFile, mmapResult.val.mem);
-    mmapResult.val.close();
-    return parseResult;
-}
-+/
-
 version = LoadSamples1;
 extern (C) int main(string[] args)
 {
@@ -386,3 +382,4 @@ extern (C) int main(string[] args)
     }
     return 0;
 }
++/

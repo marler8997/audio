@@ -189,45 +189,50 @@ passfail platformInit()
 // TODO: define a function to get the AudioFormat string (platform dependent?)
 
 // 0 = success
-ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
-				   uint samplesPerSecond,
-				   ubyte channelSampleBitLength,
-				   ubyte channelCount,
-				   uint bufferSampleCount)
+passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
 {
     import mar.mem;
+    static import audio.global;
+    import audio.renderformat;
+    import audio.format : Pcm16Format, FloatFormat;
 
     //
     // Setup audio format
     //
-    global.audioFormatID = formatID;
 
-    global.waveFormat.format.samplesPerSec  = samplesPerSecond;
+    // For now just match the render format
+    static if (is(RenderFormat == Pcm16Format))
+        global.audioFormatID = WaveFormatTag.pcm;
+    else static if (is(RenderFormat == FloatFormat))
+        global.audioFormatID = WaveFormatTag.float_;
+    else static assert("waveout does not support this render format");
 
-    global.waveFormat.format.bitsPerSample  = channelSampleBitLength;
-    global.waveFormat.format.blockAlign     = cast(ushort)((channelSampleBitLength / 8) * channelCount);
+    global.waveFormat.format.samplesPerSec  = audio.global.samplesPerSec;
 
-    global.waveFormat.format.channelCount   = channelCount;
+    global.waveFormat.format.bitsPerSample  = RenderFormat.SampleType.sizeof * 8;
+    global.waveFormat.format.blockAlign     = cast(ushort)(RenderFormat.SampleType.sizeof * audio.global.channelCount);
 
-    global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * samplesPerSecond;
+    global.waveFormat.format.channelCount   = audio.global.channelCount;
 
-    if(formatID == WaveFormatTag.pcm)
+    global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * audio.global.samplesPerSec;
+
+    if(global.audioFormatID == WaveFormatTag.pcm)
     {
         global.waveFormat.format.tag        = WaveFormatTag.pcm;
         global.waveFormat.format.extraSize  = 0; // Size of extra info
     }
-    else if(formatID == WaveFormatTag.float_)
+    else if(global.audioFormatID == WaveFormatTag.float_)
     {
         global.waveFormat.format.tag         = WaveFormatTag.extensible;
         global.waveFormat.format.extraSize   = 22; // Size of extra info
-        global.waveFormat.validBitsPerSample = channelSampleBitLength;
+        global.waveFormat.validBitsPerSample = RenderFormat.SampleType.sizeof * 8;
         global.waveFormat.channelMask        = ChannelFlags.frontLeft | ChannelFlags.frontRight;
         global.waveFormat.subFormat          = KSDataFormat.ieeeFloat;
     }
     else
     {
-        logError("Unsupported format", formatID);
-        return 1;
+        logError("Unsupported format", global.audioFormatID);
+        return passfail.fail;
     }
 
     // Setup Buffers
@@ -242,13 +247,13 @@ ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
         if(global.waveHeaders[i].base.data == null)
         {
             logError("malloc failed");
-            return 1;
+            return passfail.fail;
         }
         global.waveHeaders[i].freeEvent = CreateEventA(null, 1, 1, cstring.nullValue);
         if(global.waveHeaders[i].freeEvent.isNull)
         {
             logError("CreateEvent failed");
-            return 1;
+            return passfail.fail;
         }
     }
     global.frontBuffer = &global.waveHeaders[0];
@@ -257,7 +262,7 @@ ubyte setAudioFormatAndBufferConfig(AudioFormat formatID,
         global.backBuffer = &global.waveHeaders[1];
     }
 
-    return 0;
+    return passfail.pass;
 }
 
 extern (Windows) void waveOutCallback(WaveoutHandle waveOut, uint msg, uint* instance,

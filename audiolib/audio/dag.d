@@ -1,8 +1,10 @@
 module audio.dag;
 
+import mar.from;
 import mar.passfail;
 
 import audio.log;
+import audio.renderformat;
 
 
 // A node with no inputs
@@ -339,12 +341,14 @@ struct MidiInputNode
 }
 
 
+alias SinOscillatorMidiInstrument(Format) = MidiInstrumentTypeA!(SinOscillatorMidiInstrumentTypeA!Format);
 struct SinOscillatorMidiInstrumentTypeA(Format)
 {
     import audio.midi : MidiNote, standardFrequencies;
 
     enum TWO_PI = 3.14159265358979 * 2;
     alias FormatAlias = Format;
+    alias InstrumentData = from!"mar.aliasseq".AliasSeq!();
     struct NoteState
     {
         float currentVolume;
@@ -375,12 +379,13 @@ struct SinOscillatorMidiInstrumentTypeA(Format)
         return result;
     }
 }
+alias SawOscillatorMidiInstrument(Format) = MidiInstrumentTypeA!(SawOscillatorMidiInstrumentTypeA!Format);
 struct SawOscillatorMidiInstrumentTypeA(Format)
 {
     import audio.midi : MidiNote, standardFrequencies;
 
-    enum TWO_PI = 3.14159265358979 * 2;
     alias FormatAlias = Format;
+    alias InstrumentData = from!"mar.aliasseq".AliasSeq!();
     struct NoteState
     {
         float currentVolume;
@@ -401,13 +406,52 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
     {
         pragma(inline, true);
 
-        import mar.math : sin;
-
         const result = cast(Format.SampleType)(state.currentVolume * state.nextSample * Format.MaxAmplitude);
 
         state.nextSample += state.increment;
         if (state.nextSample >= 1.0)
             state.nextSample -= 2.0;
+        return result;
+    }
+}
+
+struct SampleInstrumentData
+{
+    import audio.midi : MidiNote;
+
+    RenderFormat.SampleType[][MidiNote.max + 1] samples;
+    this(RenderFormat.SampleType[][MidiNote.max + 1] samples)
+    {
+        this.samples = samples;
+    }
+}
+
+alias SamplerMidiInstrument = MidiInstrumentTypeA!SamplerMidiInstrumentTypeA;
+struct SamplerMidiInstrumentTypeA
+{
+    import audio.midi : MidiNote, standardFrequencies;
+
+    alias FormatAlias = RenderFormat;
+    alias InstrumentData = SampleInstrumentData;
+    struct NoteState
+    {
+        float currentVolume;
+        float targetVolume;
+        size_t nextSampleIndex;
+        MidiNote note; // save so we can easily remove the note from the MidiNoteMap
+        bool released;
+    }
+    static NoteState noteOn(ref SampleInstrumentData data, MidiEvent* event)
+    {
+        return NoteState(0, (event.noteOn.velocity / 127f) * 1.0, 0, event.noteOn.note, false);
+    }
+    static RenderFormat.SampleType renderNote(ref SampleInstrumentData data, NoteState* state)
+    {
+        pragma(inline, true);
+        if (state.nextSampleIndex == data.samples[state.note].length)
+            return 0;
+        const result = data.samples[state.note][state.nextSampleIndex];
+        state.nextSampleIndex++;
         return result;
     }
 }
@@ -422,12 +466,14 @@ struct MidiInstrumentTypeA(Renderer)
     static assert(base.offsetof == 0);
 
     MidiNoteMap!(Renderer.NoteState, ".note") notes;
+    Renderer.InstrumentData instrumentData;
     bool sustainPedal;
 
-    void init()
+    void init(Renderer.InstrumentData instrumentData)
     {
         this.base.renderNextBuffer = &renderNextBuffer;
         this.notes.init();
+        this.instrumentData = instrumentData;
     }
     final auto asBase() inout { return cast(MidiInstrument!void*)&this; }
 
@@ -454,7 +500,7 @@ struct MidiInstrumentTypeA(Renderer)
                 }
                 else
                 {
-                    me.notes.set(Renderer.noteOn(&event));
+                    me.notes.set(Renderer.noteOn(me.instrumentData, &event));
                     //const increment = TWO_PI * standardFrequencies[event.noteOn.note] / backend.samplesPerSec;
                     //me.notes.set(NoteState(0, (event.noteOn.velocity / 127f) * 1.0,
                     //    increment, 0, event.noteOn.note, false));
@@ -514,7 +560,7 @@ struct MidiInstrumentTypeA(Renderer)
                     }
                 }
 
-                Renderer.FormatAlias.getSampleRef(next) += Renderer.renderNote(&note);
+                Renderer.FormatAlias.getSampleRef(next) += Renderer.renderNote(me.instrumentData, &note);
             }
 
             if (removeNote)
