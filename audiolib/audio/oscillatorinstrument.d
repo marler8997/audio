@@ -18,11 +18,11 @@ struct OscillatorInstrument
     UniqueSinOscillator[MidiNote.max + 1] oscillators;
     this(bool placeholder)
     {
-        import audio.midi : standardFrequencies;
+        import audio.midi : stdFreq;
 
         for(ubyte note = 0; note < oscillators.length; note++)
         {
-            oscillators[note].frequency = standardFrequencies[note];
+            oscillators[note].frequency = stdFreq[note];
             oscillators[note].oscillator.base.state = RenderState.off;
         }
     }

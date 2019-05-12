@@ -76,53 +76,144 @@ struct SampleRange
 
     string sampleFile;
     MidiNote startNote;
-    const(ubyte[])[] skipPatterns;
+    const(float)[] skews;
+    //const(ubyte[])[] skipPatterns;
 }
 passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument)
 {
     import mar.array : StaticArray, StaticImmutableArray, fixedArrayBuilder, asDynamic;
     import mar.mem : malloc, free;
-    import audio.dag : SampleWithSkipPattern, SampleInstrumentData;
-    import audio.midi : MidiNote;
+    import audio.dag : SkewedSample, SampleInstrumentData;
+    import audio.midi : MidiNote, stdFreq;
 
     // Can't use an array literal because of -betterC
-    auto skipZero = StaticImmutableArray!(ubyte, 0);
-    auto skipOne = StaticImmutableArray!(ubyte, 1);
-    auto skipA = StaticImmutableArray!(ubyte, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
-    auto b3SkipPatterns = StaticImmutableArray!(ubyte[],
-        null, null, skipA, null);
     auto ranges = fixedArrayBuilder!(SampleRange, 21)
-        .put(SampleRange("MF-e1.aif"     , MidiNote.a0, null))
-        .put(SampleRange("MF-b1.aif"     , MidiNote.f0, null))
-        .put(SampleRange("MF-d2.aif"     , MidiNote.c2, null))
-        .put(SampleRange("MF-g2.aif"     , MidiNote.f2, null))
-        .put(SampleRange("MF-c3.aif"     , MidiNote.a2, null))
-        .put(SampleRange("MF-e3.aif"     , MidiNote.d3, null))
-        .put(SampleRange("MF-g3.aif"     , MidiNote.fsharp3, null))
-        .put(SampleRange("MF-b3.aif"     , MidiNote.asharp3, b3SkipPatterns.asDynamic))
-        /*
-        .put(SampleRange("MF-b3.aif"     , MidiNote.asharp3, StaticArray!(ubyte[]
-            , null
-            , null
-            , skipOne
-            , null
+        .put(SampleRange("MF-e1.aif"     , MidiNote.a0, StaticImmutableArray!(float,
+            stdFreq[MidiNote.a0] / stdFreq[MidiNote.e1],
+            stdFreq[MidiNote.asharp0] / stdFreq[MidiNote.e1],
+            stdFreq[MidiNote.b0] / stdFreq[MidiNote.e1],
+            stdFreq[MidiNote.c1] / stdFreq[MidiNote.e1],
+            stdFreq[MidiNote.csharp1] / stdFreq[MidiNote.e1],
+            stdFreq[MidiNote.d1] / stdFreq[MidiNote.e1],
+            stdFreq[MidiNote.dsharp1] / stdFreq[MidiNote.e1],
+            float.nan,
         )))
-        */
-        .put(SampleRange("MF-dsharp4.aif", MidiNote.d4, null))
-        .put(SampleRange("MF-g4.aif"     , MidiNote.fsharp4, null))
-        .put(SampleRange("MF-b4.aif"     , MidiNote.asharp4, null))
-        .put(SampleRange("MF-dsharp5.aif", MidiNote.d5, null))
-        .put(SampleRange("MF-g5.aif"     , MidiNote.fsharp5, null))
-        .put(SampleRange("MF-b5.aif"     , MidiNote.a5, null))
-        .put(SampleRange("MF-d6.aif"     , MidiNote.csharp6, null))
-        .put(SampleRange("MF-f6.aif"     , MidiNote.e6, null))
-        .put(SampleRange("MF-a6.aif"     , MidiNote.gsharp6, null))
-        .put(SampleRange("MF-csharp7.aif", MidiNote.c7, null))
-        .put(SampleRange("MF-fsharp7.aif", MidiNote.f7, null))
-        .put(SampleRange("MF-asharp7.aif", MidiNote.a7, null))
+        .put(SampleRange("MF-b1.aif"     , MidiNote.f1, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-d2.aif"     , MidiNote.c2, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-g2.aif"     , MidiNote.f2, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-c3.aif"     , MidiNote.a2, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-e3.aif"     , MidiNote.d3, StaticImmutableArray!(float,
+            stdFreq[MidiNote.d3] / stdFreq[MidiNote.e3],
+            stdFreq[MidiNote.dsharp3] / stdFreq[MidiNote.e3],
+            float.nan,
+            stdFreq[MidiNote.f3] / stdFreq[MidiNote.e3],
+        )))
+        .put(SampleRange("MF-g3.aif"     , MidiNote.fsharp3, StaticImmutableArray!(float,
+            stdFreq[MidiNote.fsharp3] / stdFreq[MidiNote.g3],
+            float.nan,
+            stdFreq[MidiNote.gsharp3] / stdFreq[MidiNote.g3],
+            stdFreq[MidiNote.a3] / stdFreq[MidiNote.g3],
+        )))
+        .put(SampleRange("MF-b3.aif"     , MidiNote.asharp3, StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )))
+        .put(SampleRange("MF-dsharp4.aif", MidiNote.d4, StaticImmutableArray!(float,
+            stdFreq[MidiNote.d4] / stdFreq[MidiNote.dsharp4],
+            float.nan,
+            stdFreq[MidiNote.e4] / stdFreq[MidiNote.dsharp4],
+            stdFreq[MidiNote.f4] / stdFreq[MidiNote.dsharp4],
+        )))
+        .put(SampleRange("MF-g4.aif"     , MidiNote.fsharp4, StaticImmutableArray!(float,
+            stdFreq[MidiNote.fsharp4] / stdFreq[MidiNote.g4],
+            float.nan,
+            stdFreq[MidiNote.gsharp4] / stdFreq[MidiNote.g4],
+            stdFreq[MidiNote.a4] / stdFreq[MidiNote.g4],
+        )))
+        .put(SampleRange("MF-b4.aif"     , MidiNote.asharp4, StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp4] / stdFreq[MidiNote.b4],
+            float.nan,
+            stdFreq[MidiNote.c5] / stdFreq[MidiNote.b4],
+            stdFreq[MidiNote.csharp5] / stdFreq[MidiNote.b4],
+        )))
+        .put(SampleRange("MF-dsharp5.aif", MidiNote.d5, StaticImmutableArray!(float,
+            stdFreq[MidiNote.d5] / stdFreq[MidiNote.dsharp5],
+            float.nan,
+            stdFreq[MidiNote.e5] / stdFreq[MidiNote.dsharp5],
+            stdFreq[MidiNote.f5] / stdFreq[MidiNote.dsharp5],
+        )))
+        .put(SampleRange("MF-g5.aif"     , MidiNote.fsharp5, StaticImmutableArray!(float,
+            stdFreq[MidiNote.fsharp5] / stdFreq[MidiNote.g5],
+            float.nan,
+            stdFreq[MidiNote.gsharp5] / stdFreq[MidiNote.g5],
+        )))
+        .put(SampleRange("MF-b5.aif"     , MidiNote.a5, StaticImmutableArray!(float,
+            stdFreq[MidiNote.a5] / stdFreq[MidiNote.b5],
+            stdFreq[MidiNote.asharp5] / stdFreq[MidiNote.b5],
+            float.nan,
+            stdFreq[MidiNote.c6] / stdFreq[MidiNote.b5],
+        )))
+        .put(SampleRange("MF-d6.aif"     , MidiNote.csharp6, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-f6.aif"     , MidiNote.e6, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-a6.aif"     , MidiNote.gsharp6, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-csharp7.aif", MidiNote.c7, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-fsharp7.aif", MidiNote.f7, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
+        .put(SampleRange("MF-asharp7.aif", MidiNote.a7, null/*StaticImmutableArray!(float,
+            stdFreq[MidiNote.asharp3] / stdFreq[MidiNote.b3],
+            float.nan,
+            stdFreq[MidiNote.c4] / stdFreq[MidiNote.b3],
+            stdFreq[MidiNote.csharp4] / stdFreq[MidiNote.b3],
+        )*/))
         .put(SampleRange(null            , MidiNote.c8, null))
         .finish;
-    auto samples = cast(SampleWithSkipPattern*)malloc(SampleWithSkipPattern.sizeof * (MidiNote.max + 1));
+    auto samples = cast(SkewedSample*)malloc(SkewedSample.sizeof * (MidiNote.max + 1));
     ubyte channelCount = 0;
     for (size_t i = 0;; i++)
     {
@@ -144,16 +235,16 @@ passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument)
         }
 
         auto patternCount = ranges[i + 1].startNote - range.startNote;
-        if (range.skipPatterns && range.skipPatterns.length != patternCount)
+        if (range.skews && range.skews.length != patternCount)
         {
-            logError("range ", range.sampleFile, " has ", range.skipPatterns.length,
-                " skip pattern(s) but needs ", patternCount);
+            logError("range ", range.sampleFile, " has ", range.skews.length,
+                " skew elements but needs ", patternCount);
             return passfail.fail;
         }
         foreach (noteOffset; 0 .. patternCount)
         {
-            samples[range.startNote + noteOffset] = SampleWithSkipPattern(result.val.array,
-                range.skipPatterns ? range.skipPatterns[noteOffset] : null);
+            samples[range.startNote + noteOffset] = SkewedSample(result.val.array,
+                range.skews ? range.skews[noteOffset] : float.nan);
         }
 
         if (channelCount == 0)

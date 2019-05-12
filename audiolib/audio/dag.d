@@ -358,7 +358,7 @@ struct OscillatorInstrumentData
 alias SinOscillatorMidiInstrument(Format) = MidiInstrumentTypeA!(SinOscillatorMidiInstrumentTypeA!Format);
 struct SinOscillatorMidiInstrumentTypeA(Format)
 {
-    import audio.midi : MidiNote, standardFrequencies;
+    import audio.midi : MidiNote, stdFreq;
 
     enum TWO_PI = 3.14159265358979 * 2;
     alias FormatAlias = Format;
@@ -374,7 +374,7 @@ struct SinOscillatorMidiInstrumentTypeA(Format)
     }
     static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
-        state.phaseIncrement = TWO_PI * standardFrequencies[event.noteOn.note] / audio.global.samplesPerSec;
+        state.phaseIncrement = TWO_PI * stdFreq[event.noteOn.note] / audio.global.samplesPerSec;
         state.phase = 0;
     }
     static void reattackNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
@@ -398,7 +398,7 @@ struct SinOscillatorMidiInstrumentTypeA(Format)
 alias SawOscillatorMidiInstrument(Format) = MidiInstrumentTypeA!(SawOscillatorMidiInstrumentTypeA!Format);
 struct SawOscillatorMidiInstrumentTypeA(Format)
 {
-    import audio.midi : MidiNote, standardFrequencies;
+    import audio.midi : MidiNote, stdFreq;
 
     alias FormatAlias = Format;
     alias InstrumentData = OscillatorInstrumentData;
@@ -414,7 +414,7 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
     static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
         state.nextSample = 0;
-        state.increment = standardFrequencies[event.noteOn.note] / audio.global.samplesPerSec;
+        state.increment = stdFreq[event.noteOn.note] / audio.global.samplesPerSec;
     }
     static void reattackNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
@@ -433,20 +433,20 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
     }
 }
 
-struct SampleWithSkipPattern
+struct SkewedSample
 {
     RenderFormat.SampleType[] array;
-    const(ubyte)[] skipPattern;
+    float skew;
 }
 struct SampleInstrumentData
 {
     import audio.midi : MidiNote;
 
     // Bug: can't use static array here with -betterC, pulls in TypeInfo
-    SampleWithSkipPattern[/*MidiNote.max + 1*/] samples;
+    SkewedSample[/*MidiNote.max + 1*/] samples;
     float volumeScale;
     ubyte channelCount;
-    this(SampleWithSkipPattern[/*MidiNote.max + 1*/] samples, float volumeScale, ubyte channelCount)
+    this(SkewedSample[/*MidiNote.max + 1*/] samples, float volumeScale, ubyte channelCount)
     {
         this.samples = samples;
         this.volumeScale = volumeScale;
@@ -457,48 +457,82 @@ struct SampleInstrumentData
 alias SamplerMidiInstrument = MidiInstrumentTypeA!SamplerMidiInstrumentTypeA;
 struct SamplerMidiInstrumentTypeA
 {
-    import audio.midi : MidiNote, standardFrequencies;
+    import audio.midi : MidiNote, stdFreq;
 
     alias FormatAlias = RenderFormat;
     alias InstrumentData = SampleInstrumentData;
     struct NoteState
     {
+        size_t sampleIndex;
         float currentVolume;
         float targetVolume;
-        size_t nextSampleIndex;
-        ubyte nextSkipPatternIndex;
+        float sampleFraction;
         MidiNote note; // save so we can easily remove the note from the MidiNoteMap
         bool released;
+        float reattackRestoreVolume;
     }
     static void newNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
     {
-        state.nextSampleIndex = 0;
-        state.nextSkipPatternIndex = 0;
+        state.sampleIndex = 0;
+        state.sampleFraction = 0;
+        state.reattackRestoreVolume = float.nan;
     }
     static void reattackNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
     {
-        state.nextSampleIndex = 0;
-        state.nextSkipPatternIndex = 0;
+        import mar.math : abs;
+
+        const samples = data.samples[state.note].array;
+        if (state.reattackRestoreVolume is float.nan)
+        {
+            state.reattackRestoreVolume = state.targetVolume;
+            state.targetVolume = 0;
+        }
     }
     static void renderNote(ref SampleInstrumentData data,
         NoteState* state, ubyte[] channels, RenderFormat.SampleType* buffer)
     {
         pragma(inline, true);
-        if (state.nextSampleIndex < data.samples[state.note].array.length)
+
+        if (state.reattackRestoreVolume !is float.nan)
+        {
+            if (state.currentVolume == 0)
+            {
+                state.sampleIndex = 0;
+                state.sampleFraction = 0;
+                state.currentVolume = state.reattackRestoreVolume;
+                state.targetVolume = state.reattackRestoreVolume;
+                state.reattackRestoreVolume = float.nan;
+            }
+        }
+
+        const samples = data.samples[state.note].array;
+        if (state.sampleIndex < samples.length)
         {
             //logDebug("sample ", data.samples[state.note][state.nextSampleIndex]);
             // just do one channel for now
-            addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
-                state.currentVolume * data.volumeScale * data.samples[state.note].array[state.nextSampleIndex]));
-            if (data.samples[state.note].skipPattern.length == 0)
-                state.nextSampleIndex += data.channelCount;
+            if (data.samples[state.note].skew is float.nan)
+            {
+                //logDebug("no skew");
+                addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
+                    state.currentVolume * data.volumeScale * samples[state.sampleIndex]));
+                state.sampleIndex++;
+            }
             else
             {
-                //logDebug("skip ", data.samples[state.note].skipPattern[state.nextSkipPatternIndex]);
-                state.nextSampleIndex += data.channelCount *
-                    (1 + data.samples[state.note].skipPattern[state.nextSkipPatternIndex++]);
-                if (state.nextSkipPatternIndex >= data.samples[state.note].skipPattern.length)
-                    state.nextSkipPatternIndex = 0;
+                //logDebug("skew ", data.samples[state.note].skew);
+                RenderFormat.SampleType sample = samples[state.sampleIndex];
+                if (state.sampleIndex + 1 < samples.length)
+                {
+                    sample += (samples[state.sampleIndex+1]-sample) * state.sampleFraction;
+                }
+                addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
+                    state.currentVolume * data.volumeScale * sample));
+                auto next = state.sampleFraction + data.samples[state.note].skew;
+                for (; next >= 1; next--)
+                {
+                    state.sampleIndex++;
+                }
+                state.sampleFraction = next;
             }
         }
     }
@@ -597,7 +631,7 @@ struct MidiInstrumentTypeA(Renderer)
                 }
                 else if (note.targetVolume != note.currentVolume)
                 {
-                    enum VolumeChangeVelocity = .001;
+                    enum VolumeChangeVelocity = .001; // Note: should take frequency into account
                     if (note.targetVolume > note.currentVolume)
                     {
                         note.currentVolume += VolumeChangeVelocity;

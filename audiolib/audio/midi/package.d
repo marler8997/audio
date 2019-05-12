@@ -4,6 +4,9 @@ enum MidiNote : ubyte
 {
     none = 0,
 
+    anegative1 = 9,
+    asharpnegative1 = 10,
+    bnegative1 = 11,
     c0      =  12,
     csharp0 =  13,
     d0      =  14,
@@ -122,7 +125,7 @@ enum MidiNote : ubyte
     gsharp9 = 127,
 }
 
-__gshared immutable float[256] standardFrequencies = [
+__gshared immutable float[256] stdFreq = [
      0               :    8.18,
      1               :    8.66,
      2               :    9.18,
