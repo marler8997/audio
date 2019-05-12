@@ -101,7 +101,6 @@ passfail close()
     return passfail.pass;
 }
 
-auto samplesPerSec() { pragma(inline, true); return global.waveFormat.format.samplesPerSec; }
 auto bufferSampleCount() { pragma(inline, true); return global.bufferSampleCount; }
 
 /**
@@ -112,12 +111,33 @@ This blocking characterstic is what keeps the render thread from spinning.
 version (UseBackBuffer)
 passfail writeBuffer(Format)(void* renderBuffer)
 {
+    import mar.mem : memcpy;
     import mar.windows.types : INFINITE;
     import mar.windows.kernel32 : GetLastError, WaitForSingleObject;
+    static import audio.global;
 
     // TODO: figure out which functions are taking the longest
     //now.update();
-    Format.monoToStereo(cast(uint*)global.backBuffer.base.data, cast(ushort*)renderBuffer, global.bufferSampleCount);
+
+    // Since we are using the same format as Render format, no need to convert
+    memcpy(global.backBuffer.base.data, renderBuffer,
+        bufferSampleCount * audio.global.channelCount * Format.SampleType.sizeof);
+    /*
+    if (audio.global.channelCount == 1)
+    {
+        logError("waveout writeBuffer channelCount 1 not impl");
+        return passfail.fail;
+    }
+    else if (audio.global.channelCount == 2)
+    {
+        Format.monoToStereo(cast(uint*)global.backBuffer.base.data, cast(ushort*)renderBuffer, global.bufferSampleCount);
+    }
+    else
+    {
+        logError("waveout writeBuffer channelCount ", audio.global.channelCount, " not impl");
+        return passfail.fail;
+    }
+    */
     // TODO: is prepare necessary each time with no backbuffer?
     {
         const result = waveOutPrepareHeader(global.waveOut, &global.backBuffer.base, WaveHeader.sizeof);
@@ -199,8 +219,7 @@ passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
     //
     // Setup audio format
     //
-
-    // For now just match the render format
+    // For now just match the render format so we don't have to convert
     static if (is(RenderFormat == Pcm16Format))
         global.audioFormatID = WaveFormatTag.pcm;
     else static if (is(RenderFormat == FloatFormat))
@@ -226,7 +245,15 @@ passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
         global.waveFormat.format.tag         = WaveFormatTag.extensible;
         global.waveFormat.format.extraSize   = 22; // Size of extra info
         global.waveFormat.validBitsPerSample = RenderFormat.SampleType.sizeof * 8;
-        global.waveFormat.channelMask        = ChannelFlags.frontLeft | ChannelFlags.frontRight;
+        if (audio.global.channelCount == 1)
+            global.waveFormat.channelMask    = ChannelFlags.frontCenter;
+        else if (audio.global.channelCount == 2)
+            global.waveFormat.channelMask    = ChannelFlags.frontLeft | ChannelFlags.frontRight;
+        else
+        {
+            logError("waveout channel count ", audio.global.channelCount, " not implemented");
+            return passfail.fail;
+        }
         global.waveFormat.subFormat          = KSDataFormat.ieeeFloat;
     }
     else

@@ -28,8 +28,8 @@ struct OscillatorInstrument
     }
     void play(Format)(MidiNote note)
     {
+        static import audio.global;
         import audio.render : addRenderer;
-        import audio.backend : samplesPerSec;
 
         if (note >= oscillators.length)
         {
@@ -41,7 +41,7 @@ struct OscillatorInstrument
         {
             //printf("Key code %d 0x%x '%c' has frequency %f\n", code, code, (char)code,
             //oscillators[code].frequency);
-            oscillators[note].oscillator.init!Format(samplesPerSec, oscillators[note].frequency, .2);
+            oscillators[note].oscillator.initialize!Format(audio.global.samplesPerSec, oscillators[note].frequency, .2);
             addRenderer(&(oscillators[note].oscillator.base));
         }
     }

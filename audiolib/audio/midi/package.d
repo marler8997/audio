@@ -276,7 +276,7 @@ struct MidiNoteMap(T, string noteMember)
     private StaticArray!(T, MidiNote.max + 1) array;
     private ubyte[MidiNote.max + 1] indexTable;
 
-    void init()
+    void initialize()
     {
         import mar.mem : memset;
         memset(indexTable.ptr, ubyte.max, indexTable.length);
@@ -364,7 +364,7 @@ unittest
 {
     {
         MidiNoteMap!(MidiNote, "") map;
-        map.init();
+        map.initialize();
         map.set(MidiNote.c4);
         map.set(MidiNote.csharp4);
         map.set(MidiNote.d4);

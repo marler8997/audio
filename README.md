@@ -1,4 +1,4 @@
 # TODO
 
 * change render to not be global?
-* implement MIDI
+* load instrument from json file

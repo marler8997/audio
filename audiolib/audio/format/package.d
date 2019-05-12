@@ -50,11 +50,11 @@ struct FloatFormat
     }
     static passfail copyConvert(float* dst, void* src, SampleKind kind, uint samplesPerSec, size_t sampleCount, ubyte channelCount, ubyte sampleSize)
     {
-        static import audio.backend;
-        if (samplesPerSec != audio.backend.samplesPerSec)
+        static import audio.global;
+        if (samplesPerSec != audio.global.samplesPerSec)
         {
             logError("Converting between frequencies ", samplesPerSec, " to ",
-                audio.backend.samplesPerSec, " is not implemented");
+                audio.global.samplesPerSec, " is not implemented");
             return passfail.fail;
         }
         foreach (i; 0 .. sampleCount)
@@ -65,7 +65,13 @@ struct FloatFormat
                 {
                     case SampleKind.int_:
                         if (sampleSize == 2)
-                            dst[0] = cast(float)*cast(ushort*)src;
+                        {
+                            import mar.serialize : deserializeBE;
+                            // TODO: we don't know if the sample is big endian yet
+                            dst[0] = cast(float)deserializeBE!short(src) / 32768.0;
+                            //if (channel == 0)
+                            //    logDebug(*cast(short*)src, " > ", dst[0]);
+                        }
                         else
                         {
                             logError("format not supported yet");

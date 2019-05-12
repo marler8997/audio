@@ -5,6 +5,7 @@ import mar.passfail;
 
 import audio.log;
 import audio.renderformat;
+static import audio.global;
 
 
 // A node with no inputs
@@ -13,7 +14,7 @@ struct RootRenderNode(T)
     // NOTE: this tree structure is not very cache friendly
     //       should flatten out the memory for the render node tree
     //ArrayBuilder!(Node!void) children;
-    void function(T* context, void* renderBuffer, const void* limit) renderNextBuffer;
+    void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit) renderNextBuffer;
 }
 
 
@@ -78,7 +79,7 @@ struct MidiInstrument(T)
     import audio.render : RenderState;
     import audio.midi : MidiNote;
 
-    void function(T* context, void* renderBuffer, const void* limit, MidiEvent[] midiEvents) renderNextBuffer;
+    void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit, MidiEvent[] midiEvents) renderNextBuffer;
 }
 
 
@@ -93,7 +94,7 @@ struct MidiInputNode
     //bool[MidiNote.max + 1] onMap;
 
     ArrayBuilder!MidiEvent midiEvents;
-    void init()
+    void initialize()
     {
         this.base.renderNextBuffer = &renderNextBuffer;
     }
@@ -125,11 +126,11 @@ struct MidiInputNode
         return midiEvents.tryPut(event);
     }
 
-    static void renderNextBuffer(MidiInputNode* me, void* renderBuffer, const void* limit)
+    static void renderNextBuffer(MidiInputNode* me, ubyte[] channels, void* renderBuffer, const void* limit)
     {
         foreach (instrument; me.instruments.data)
         {
-            instrument.renderNextBuffer(instrument, renderBuffer, limit, me.midiEvents.data);
+            instrument.renderNextBuffer(instrument, channels, renderBuffer, limit, me.midiEvents.data);
         }
         me.midiEvents.shrinkTo(0);
     }
@@ -341,6 +342,19 @@ struct MidiInputNode
 }
 
 
+void addToEachChannel(ubyte[] channels, RenderFormat.SampleType* buffer, RenderFormat.SampleType value)
+{
+    foreach (channel; channels)
+    {
+        buffer[channel] += value;
+    }
+}
+
+struct OscillatorInstrumentData
+{
+    float volumeScale;
+}
+
 alias SinOscillatorMidiInstrument(Format) = MidiInstrumentTypeA!(SinOscillatorMidiInstrumentTypeA!Format);
 struct SinOscillatorMidiInstrumentTypeA(Format)
 {
@@ -348,7 +362,7 @@ struct SinOscillatorMidiInstrumentTypeA(Format)
 
     enum TWO_PI = 3.14159265358979 * 2;
     alias FormatAlias = Format;
-    alias InstrumentData = from!"mar.aliasseq".AliasSeq!();
+    alias InstrumentData = OscillatorInstrumentData;
     struct NoteState
     {
         float currentVolume;
@@ -358,25 +372,27 @@ struct SinOscillatorMidiInstrumentTypeA(Format)
         MidiNote note; // save so we can easily remove the note from the MidiNoteMap
         bool released;
     }
-    static NoteState noteOn(MidiEvent* event)
+    static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
-        static import audio.backend;
-
-        const increment = TWO_PI * standardFrequencies[event.noteOn.note] / audio.backend.samplesPerSec;
-        return NoteState(0, (event.noteOn.velocity / 127f) * 1.0,
-            increment, 0, event.noteOn.note, false);
+        state.phaseIncrement = TWO_PI * standardFrequencies[event.noteOn.note] / audio.global.samplesPerSec;
+        state.phase = 0;
     }
-    static Format.SampleType renderNote(NoteState* state)
+    static void reattackNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
+    {
+    }
+    static void renderNote(ref OscillatorInstrumentData instrument, NoteState* state,
+        ubyte[] channels, RenderFormat.SampleType* buffer)
     {
         pragma(inline, true);
 
         import mar.math : sin;
 
-        const result = cast(Format.SampleType)(state.currentVolume * sin(state.phase) * Format.MaxAmplitude);
+        addToEachChannel(channels, buffer, cast(Format.SampleType)(
+                state.currentVolume * sin(state.phase) * instrument.volumeScale * Format.MaxAmplitude));
+
         state.phase += state.phaseIncrement;
         if(state.phase > TWO_PI)
             state.phase -= TWO_PI;
-        return result;
     }
 }
 alias SawOscillatorMidiInstrument(Format) = MidiInstrumentTypeA!(SawOscillatorMidiInstrumentTypeA!Format);
@@ -385,7 +401,7 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
     import audio.midi : MidiNote, standardFrequencies;
 
     alias FormatAlias = Format;
-    alias InstrumentData = from!"mar.aliasseq".AliasSeq!();
+    alias InstrumentData = OscillatorInstrumentData;
     struct NoteState
     {
         float currentVolume;
@@ -395,34 +411,46 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
         MidiNote note; // save so we can easily remove the note from the MidiNoteMap
         bool released;
     }
-    static NoteState noteOn(MidiEvent* event)
+    static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
-        static import audio.backend;
-
-        const increment = standardFrequencies[event.noteOn.note] / audio.backend.samplesPerSec;
-        return NoteState(0, (event.noteOn.velocity / 127f) * 1.0, 0, increment, event.noteOn.note, false);
+        state.nextSample = 0;
+        state.increment = standardFrequencies[event.noteOn.note] / audio.global.samplesPerSec;
     }
-    static Format.SampleType renderNote(NoteState* state)
+    static void reattackNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
+    {
+    }
+    static void renderNote(ref OscillatorInstrumentData instrument, NoteState* state,
+        ubyte[] channels, RenderFormat.SampleType* buffer)
     {
         pragma(inline, true);
 
-        const result = cast(Format.SampleType)(state.currentVolume * state.nextSample * Format.MaxAmplitude);
+        addToEachChannel(channels, buffer, cast(Format.SampleType)(
+            state.currentVolume * state.nextSample * instrument.volumeScale * Format.MaxAmplitude));
 
         state.nextSample += state.increment;
         if (state.nextSample >= 1.0)
             state.nextSample -= 2.0;
-        return result;
     }
 }
 
+struct SampleWithSkipPattern
+{
+    RenderFormat.SampleType[] array;
+    const(ubyte)[] skipPattern;
+}
 struct SampleInstrumentData
 {
     import audio.midi : MidiNote;
 
-    RenderFormat.SampleType[][MidiNote.max + 1] samples;
-    this(RenderFormat.SampleType[][MidiNote.max + 1] samples)
+    // Bug: can't use static array here with -betterC, pulls in TypeInfo
+    SampleWithSkipPattern[/*MidiNote.max + 1*/] samples;
+    float volumeScale;
+    ubyte channelCount;
+    this(SampleWithSkipPattern[/*MidiNote.max + 1*/] samples, float volumeScale, ubyte channelCount)
     {
         this.samples = samples;
+        this.volumeScale = volumeScale;
+        this.channelCount = channelCount;
     }
 }
 
@@ -438,24 +466,43 @@ struct SamplerMidiInstrumentTypeA
         float currentVolume;
         float targetVolume;
         size_t nextSampleIndex;
+        ubyte nextSkipPatternIndex;
         MidiNote note; // save so we can easily remove the note from the MidiNoteMap
         bool released;
     }
-    static NoteState noteOn(ref SampleInstrumentData data, MidiEvent* event)
+    static void newNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
     {
-        return NoteState(0, (event.noteOn.velocity / 127f) * 1.0, 0, event.noteOn.note, false);
+        state.nextSampleIndex = 0;
+        state.nextSkipPatternIndex = 0;
     }
-    static RenderFormat.SampleType renderNote(ref SampleInstrumentData data, NoteState* state)
+    static void reattackNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
+    {
+        state.nextSampleIndex = 0;
+        state.nextSkipPatternIndex = 0;
+    }
+    static void renderNote(ref SampleInstrumentData data,
+        NoteState* state, ubyte[] channels, RenderFormat.SampleType* buffer)
     {
         pragma(inline, true);
-        if (state.nextSampleIndex == data.samples[state.note].length)
-            return 0;
-        const result = data.samples[state.note][state.nextSampleIndex];
-        state.nextSampleIndex++;
-        return result;
+        if (state.nextSampleIndex < data.samples[state.note].array.length)
+        {
+            //logDebug("sample ", data.samples[state.note][state.nextSampleIndex]);
+            // just do one channel for now
+            addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
+                state.currentVolume * data.volumeScale * data.samples[state.note].array[state.nextSampleIndex]));
+            if (data.samples[state.note].skipPattern.length == 0)
+                state.nextSampleIndex += data.channelCount;
+            else
+            {
+                //logDebug("skip ", data.samples[state.note].skipPattern[state.nextSkipPatternIndex]);
+                state.nextSampleIndex += data.channelCount *
+                    (1 + data.samples[state.note].skipPattern[state.nextSkipPatternIndex++]);
+                if (state.nextSkipPatternIndex >= data.samples[state.note].skipPattern.length)
+                    state.nextSkipPatternIndex = 0;
+            }
+        }
     }
 }
-
 
 struct MidiInstrumentTypeA(Renderer)
 {
@@ -469,15 +516,15 @@ struct MidiInstrumentTypeA(Renderer)
     Renderer.InstrumentData instrumentData;
     bool sustainPedal;
 
-    void init(Renderer.InstrumentData instrumentData)
+    void initialize(Renderer.InstrumentData instrumentData)
     {
         this.base.renderNextBuffer = &renderNextBuffer;
-        this.notes.init();
+        this.notes.initialize();
         this.instrumentData = instrumentData;
     }
     final auto asBase() inout { return cast(MidiInstrument!void*)&this; }
 
-    static void renderNextBuffer(typeof(this)* me, void* buffer, const void* limit, MidiEvent[] midiEvents)
+    static void renderNextBuffer(typeof(this)* me, ubyte[] channels, void* buffer, const void* limit, MidiEvent[] midiEvents)
     {
         // update notes
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -497,13 +544,17 @@ struct MidiInstrumentTypeA(Renderer)
                     // TODO: change should be gradual, not immediate
                     state.targetVolume = (event.noteOn.velocity / 127f) * 1.0;
                     state.released = false;
+                    Renderer.reattackNote(me.instrumentData, &event, state);
                 }
                 else
                 {
-                    me.notes.set(Renderer.noteOn(me.instrumentData, &event));
-                    //const increment = TWO_PI * standardFrequencies[event.noteOn.note] / backend.samplesPerSec;
-                    //me.notes.set(NoteState(0, (event.noteOn.velocity / 127f) * 1.0,
-                    //    increment, 0, event.noteOn.note, false));
+                    Renderer.NoteState newNoteState = void;
+                    newNoteState.currentVolume = event.noteOn.velocity / 127.0 * 1.0;
+                    newNoteState.targetVolume = newNoteState.currentVolume;
+                    newNoteState.note = event.noteOn.note;
+                    newNoteState.released = false;
+                    Renderer.newNote(me.instrumentData, &event, &newNoteState);
+                    me.notes.set(newNoteState);
                 }
                 break;
             case MidiEventType.noteOff:
@@ -532,7 +583,8 @@ struct MidiInstrumentTypeA(Renderer)
             auto note = me.notes.asArray[noteIndex];
             bool removeNote = false;
             //log("Rendering note ", note.note);
-            for (auto next = buffer; next < limit; next += Renderer.FormatAlias.SampleType.sizeof)
+            for (auto next = buffer; next < limit;
+                next += (audio.global.channelCount * Renderer.FormatAlias.SampleType.sizeof))
             {
                 if (note.released && !me.sustainPedal)
                 {
@@ -560,7 +612,7 @@ struct MidiInstrumentTypeA(Renderer)
                     }
                 }
 
-                Renderer.FormatAlias.getSampleRef(next) += Renderer.renderNote(me.instrumentData, &note);
+                Renderer.renderNote(me.instrumentData, &note, channels, cast(RenderFormat.SampleType*)next);
             }
 
             if (removeNote)

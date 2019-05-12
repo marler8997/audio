@@ -36,7 +36,7 @@ struct SinOscillator
     AudioRenderer!SinOscillator base;
     float increment; // READONLY
     float currentPhase;
-    void init(Format)(uint samplesPerSecond, float frequency, float volume)
+    void initialize(Format)(uint samplesPerSecond, float frequency, float volume)
     {
         this.base.renderBlock = &renderSin!Format;
         this.base.volume = volume;
@@ -152,14 +152,14 @@ void addRootRenderNode(RootRenderNode!void* renderer)
     //printf("Added a renderer (there are now %d renderers)\n", currentRendererCount);
 }
 
-void render(void* buffer, const void* limit)
+void render(ubyte[] channels, void* buffer, const void* limit)
 {
     import mar.mem : zero;
     zero(buffer, limit - buffer);
     enterRenderCriticalSection();
     scope (exit) exitRenderCriticalSection();
 
-    //logDebug("render (", currentRendererCount, " renderers)");
+    //logDebug("render");
     for (size_t i = 0; i < global.renderers.length; i++)
     {
         auto renderer = global.renderers[i];
@@ -176,7 +176,7 @@ void render(void* buffer, const void* limit)
     for (size_t i = 0; i < global.rootRenderNodes.length; i++)
     {
         auto node = global.rootRenderNodes[i];
-        node.renderNextBuffer(node, buffer, limit);
+        node.renderNextBuffer(node, channels, buffer, limit);
     }
 }
 
@@ -197,7 +197,7 @@ passfail renderLoop(Format)(uint bufferSampleCount)
 {
     import mar.mem : malloc, free;
 
-    const renderBufferSize = bufferSampleCount * Format.SampleType.sizeof;
+    const renderBufferSize = bufferSampleCount * audio.global.channelCount * Format.SampleType.sizeof;
     logDebug("renderBufferSize ", renderBufferSize);
     auto renderBuffer = malloc(renderBufferSize);
     if(renderBuffer == null)
@@ -205,7 +205,18 @@ passfail renderLoop(Format)(uint bufferSampleCount)
         logError("malloc failed");
         return passfail.fail;
     }
-    const result = renderLoop!Format(renderBuffer, renderBuffer + renderBufferSize);
+    ubyte* channels = cast(ubyte*)malloc(ubyte.sizeof * audio.global.channelCount);
+    if(channels == null)
+    {
+        logError("malloc failed");
+        return passfail.fail;
+    }
+    foreach (ubyte i; 0 .. audio.global.channelCount)
+    {
+        channels[i] = i;
+    }
+    const result = renderLoop!Format(channels[0 .. audio.global.channelCount],
+        renderBuffer, renderBuffer + renderBufferSize);
     free(renderBuffer);
     return result;
 }
@@ -213,7 +224,7 @@ passfail renderLoop(Format)(uint bufferSampleCount)
 
 //version = AddDefaultRenderer;
 //version = DebugDumpRender;
-passfail renderLoop(Format)(void* renderBuffer, const void* renderLimit)
+passfail renderLoop(Format)(ubyte[] channels, void* renderBuffer, const void* renderLimit)
 {
     while(true)
     {
@@ -232,7 +243,7 @@ passfail renderLoop(Format)(void* renderBuffer, const void* renderLimit)
             }
         }
 
-        render(renderBuffer, renderLimit);
+        render(channels, renderBuffer, renderLimit);
 
         version (DebugDumpRender)
         {
