@@ -297,7 +297,7 @@ version = OlliOptimal6po5o;
 alias SamplerMidiInstrument = MidiInstrumentTypeA!SamplerMidiInstrumentTypeA;
 struct SamplerMidiInstrumentTypeA
 {
-    import audio.midi : MidiNote, stdFreq;
+    import audio.midi : MidiNote;
 
     alias FormatAlias = RenderFormat;
     alias InstrumentData = SampleInstrumentData;

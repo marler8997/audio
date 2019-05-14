@@ -99,6 +99,7 @@ struct PCKeyboardMidiInputDevice
 }
 
 // TODO: move these to mar
+enum VK_RETURN = 0x000d;
 enum VK_ESCAPE = 0x1b;
 enum VK_OEM_COMMA = 0xbc;
 enum VK_OEM_PERIOD = 0xbe;
@@ -134,7 +135,7 @@ passfail installKeyNoteHandlers(PCKeyboardInputNode* node)
     {
         if (keyToNoteMap[keyCode] != 0)
         {
-            log("install keycode ", keyCode);
+            //log("install keycode ", keyCode);
             if (global.keyHandlers[keyCode].isSet)
             {
                 logError("handler already installed to keycode ", keyCode);
@@ -358,12 +359,18 @@ LinputLoop:
                     }
                 }
 
-                // Quit from ESCAPE or CTL-C
-                if((code == VK_ESCAPE) ||
+                // Quit from ESCAPE, ENTER, or CTL-C
+                if((code == VK_ESCAPE) ||// (code == VK_RETURN) ||
                     (code == 'C' &&
                     (inputBuffer[i].key.controlKeyState & (LEFT_CTRL_PRESSED |
                     RIGHT_CTRL_PRESSED))))
                 {
+                    if (code == VK_ESCAPE)
+                        log("ESC key pressed");
+                    else if (code == VK_RETURN)
+                        log("Enter key pressed");
+                    else
+                        log("CTL-C pressed");
                     break LinputLoop;
                 }
             }

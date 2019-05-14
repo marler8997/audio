@@ -198,7 +198,7 @@ passfail renderLoop(Format)(uint bufferSampleCount)
     import mar.mem : malloc, free;
 
     const renderBufferSize = bufferSampleCount * audio.global.channelCount * Format.SampleType.sizeof;
-    logDebug("renderBufferSize ", renderBufferSize);
+    //logDebug("renderBufferSize ", renderBufferSize);
     auto renderBuffer = malloc(renderBufferSize);
     if(renderBuffer == null)
     {
