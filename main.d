@@ -19,6 +19,8 @@ extern (C) int main(string[] args)
         return 1;
     if(audio.backend.platformInit().failed)
         return 1;
+    if(from!"audio.pckeyboard".pckeyboardInit().failed)
+        return 1;
 
     audio.global.channelCount = 1;
     //audio.global.channelCount = 2;
@@ -61,13 +63,6 @@ extern (C) int main(string[] args)
 
     //return go();
     return go2();
-}
-
-void waitForEnterKey()
-{
-    import mar.stdio;
-    char[8] buffer;
-    auto result = stdin.read(buffer);
 }
 
 struct SampleRange
@@ -277,22 +272,22 @@ int go2()
     import audio.dag;
     import backend = audio.backend;
 
-
-    //auto midiInstrument = SinMidiInstrument!RenderFormat();
-    //auto midiInstrument = SinOscillatorMidiInstrument!RenderFormat();
-    //midiInstrument.initialize();
+    auto pcKeyboardInput = from!"audio.pckeyboard".PCKeyboardInputNode();
+    pcKeyboardInput.initialize();
     auto midiInput = from!"audio.windowsmidi".WindowsMidiInputNode();
     midiInput.initialize();
     version (SinWave)
     {
         auto sinWave = SinOscillatorMidiInstrument!RenderFormat();
         sinWave.initialize(OscillatorInstrumentData(.1));
+        pcKeyboardInput.tryAddInstrument(sinWave.asBase).enforce();
         midiInput.tryAddInstrument(sinWave.asBase).enforce();
     }
     version (SawWave)
     {
         auto sawWave = SawOscillatorMidiInstrument!RenderFormat();
         sawWave.initialize(OscillatorInstrumentData(.1));
+        pcKeyboardInput.tryAddInstrument(sawWave.asBase).enforce();
         midiInput.tryAddInstrument(sawWave.asBase).enforce();
     }
     version (GrandPiano)
@@ -300,27 +295,40 @@ int go2()
         SamplerMidiInstrument grandPiano;
         if (loadGrandPiano(&grandPiano).failed)
             return 1; // fail
+        pcKeyboardInput.tryAddInstrument(grandPiano.asBase).enforce();
         midiInput.tryAddInstrument(grandPiano.asBase).enforce();
     }
 
-    midiInput.startMidiDeviceInput(0); // just hardcode device 0 for now
+    pcKeyboardInput.startMidiDeviceInput().enforce();
+    midiInput.startMidiDeviceInput(0).enforce(); // just hardcode MIDI device 0 for now
+    //addRootRenderNode(pcKeyboardInput.asBase);
     addRootRenderNode(midiInput.asBase);
 
     backend.open();
     import audio.render : renderThread;
     version (Windows)
     {
-    auto audioWriteThread = CreateThread(null,
-        0,
-        &renderThread,
-        null,
-        0,
-        null);
+        auto audioWriteThread = CreateThread(null,
+            0,
+            &renderThread,
+            null,
+            0,
+            null);
+        if (audioWriteThread.isNull)
+        {
+            import mar.windows.kernel32 : GetLastError;
+            logError("CreateThread failed, e=", GetLastError());
+            return 1;
+        }
     }
 
-    log("Press enter to stop");
-    flushLog();
-    waitForEnterKey();
+    {
+        import audio.pckeyboard : startInputThread, joinInputThread;
+        startInputThread();
+        log("Press ESC to quit");
+        flushLog();
+        joinInputThread();
+    }
 
     backend.close();
     midiInput.stopMidiDeviceInput();

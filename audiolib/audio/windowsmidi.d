@@ -126,51 +126,43 @@ struct WindowsMidiInputDevice
 
     static passfail startMidiDeviceInput(WindowsMidiInputNode* node, uint midiDeviceID)
     {
-        version (Windows)
+        if (node.inputDevice.running)
         {
-            if (node.inputDevice.running)
-            {
-                logError("this MidiInputNode is already running");
-                return passfail.fail;
-            }
-
-            passfail ret = passfail.fail; // fail by default
-            {
-                const result = midiInOpen(&node.inputDevice.midiHandle, midiDeviceID,
-                    &midiInputCallback, node, MuitlmediaOpenFlags.callbackFunction);
-                if(result.failed)
-                {
-                    logError("midiInOpen failed, result=", result);
-                    goto LopenFailed;
-                }
-            }
-            {
-                const result = midiInStart(node.inputDevice.midiHandle);
-                if(result.failed)
-                {
-                    logError("midiInStart failed, result=", result);
-                    goto LstartFailed;
-                }
-            }
-            node.inputDevice.running = true;
-            return passfail.pass;
-        LstartFailed:
-            {
-                const result = midiInClose(node.inputDevice.midiHandle);
-                if (result.failed)
-                {
-                    logError("midiInClose failed, result=", result);
-                    ret = passfail.fail;
-                }
-            }
-        LopenFailed:
-            return ret;
-        }
-        else
-        {
-            logError("midi not implemented on this platform");
+            logError("this MidiInputNode is already running");
             return passfail.fail;
         }
+
+        passfail ret = passfail.fail; // fail by default
+        {
+            const result = midiInOpen(&node.inputDevice.midiHandle, midiDeviceID,
+                &midiInputCallback, node, MuitlmediaOpenFlags.callbackFunction);
+            if(result.failed)
+            {
+                logError("midiInOpen failed, result=", result);
+                goto LopenFailed;
+            }
+        }
+        {
+            const result = midiInStart(node.inputDevice.midiHandle);
+            if(result.failed)
+            {
+                logError("midiInStart failed, result=", result);
+                goto LstartFailed;
+            }
+        }
+        node.inputDevice.running = true;
+        return passfail.pass;
+    LstartFailed:
+        {
+            const result = midiInClose(node.inputDevice.midiHandle);
+            if (result.failed)
+            {
+                logError("midiInClose failed, result=", result);
+                ret = passfail.fail;
+            }
+        }
+    LopenFailed:
+        return ret;
     }
     static passfail stopMidiDeviceInput(WindowsMidiInputNode* node)
     {
