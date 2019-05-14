@@ -281,7 +281,7 @@ int go2()
     //auto midiInstrument = SinMidiInstrument!RenderFormat();
     //auto midiInstrument = SinOscillatorMidiInstrument!RenderFormat();
     //midiInstrument.initialize();
-    auto midiInput = MidiInputNode();
+    auto midiInput = from!"audio.windowsmidi".WindowsMidiInputNode();
     midiInput.initialize();
     version (SinWave)
     {
@@ -327,7 +327,7 @@ int go2()
     return 0;
 }
 
-version = UseMidiInstrument;
+//version = UseMidiInstrument;
 ubyte go()
 {
     version (Windows)
@@ -390,8 +390,12 @@ ubyte go()
     }
     else
     {
+        /*
+        BROKEN:
+            audio.obj : error LNK2019: unresolved external symbol __memsetn referenced in function audio.pckeyboardinstrument.readNotes!(audio.format.FloatFormat).readNotes()
         static import audio.pckeyboardinstrument;
         audio.pckeyboardinstrument.readNotes!RenderFormat();
+        */
     }
     backend.close();
 

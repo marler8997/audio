@@ -82,25 +82,51 @@ struct MidiInstrument(T)
     void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit, MidiEvent[] midiEvents) renderNextBuffer;
 }
 
-
-struct MidiInputNode
+/**
+BUG
+The program won't compile unless I leave the following import in.
+Even though this import is not used at all, when I remove it I get these errors:
+    D:\git\mar\src\mar\array.d(326): Error: variable `mar.array.StaticArray!(NoteState, 128u).StaticArray.opIndex.this` inout variables can only be declared inside inout functions
+    D:\git\audio\audiolib\audio\midi\package.d(307): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(311): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
+    D:\git\mar\src\mar\array.d(331): Error: size of type MemoryResult is not known
+    D:\git\mar\src\mar\array.d(331): Error: size of type MemoryResult is not known
+    D:\git\mar\src\mar\array.d(334): Error: forward reference to type MemoryResult
+    D:\git\mar\src\mar\array.d(337): Error: forward reference to type MemoryResult
+    D:\git\audio\audiolib\audio\midi\package.d(313): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member tryPut is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(287): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
+    D:\git\mar\src\mar\array.d(327): Error: forward reference to type T[]
+    D:\git\audio\audiolib\audio\midi\package.d(288): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member data is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(323): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member removeAt is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(324): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d-mixin-326(326): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(297): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d-mixin-337(337): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(338): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member removeAt is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(339): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d-mixin-341(341): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
+    D:\git\audio\audiolib\audio\midi\package.d(333): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
+*/
+import audio.windowsmidi : WindowsMidiInputDevice;
+struct MidiInputNodeTemplate(InputDevice)
 {
     import mar.arraybuilder : ArrayBuilder;
     import audio.render : RenderState;
     import audio.midi : MidiNote, MidiNoteMap;
 
-    RootRenderNode!MidiInputNode base;
+    RootRenderNode!(typeof(this)) base;
     private ArrayBuilder!(MidiInstrument!void*) instruments;
     //bool[MidiNote.max + 1] onMap;
-
     ArrayBuilder!MidiEvent midiEvents;
-    void initialize()
+    InputDevice inputDevice;
+
+    final void initialize()
     {
         this.base.renderNextBuffer = &renderNextBuffer;
     }
     final auto asBase() inout { return cast(RootRenderNode!void*)&this; }
 
-    passfail tryAddInstrument(MidiInstrument!void* instrument)
+    final passfail tryAddInstrument(MidiInstrument!void* instrument)
     {
         if (instruments.tryPut(instrument).failed)
             return passfail.fail;
@@ -116,7 +142,7 @@ struct MidiInputNode
     }
 
     // returns: false if it was already on
-    auto tryAddMidiEvent(MidiEvent event)
+    final auto tryAddMidiEvent(MidiEvent event)
     {
         import audio.render : enterRenderCriticalSection, exitRenderCriticalSection;
 
@@ -126,7 +152,7 @@ struct MidiInputNode
         return midiEvents.tryPut(event);
     }
 
-    static void renderNextBuffer(MidiInputNode* me, ubyte[] channels, void* renderBuffer, const void* limit)
+    static void renderNextBuffer(typeof(this)/*!InputDevice*/* me, ubyte[] channels, void* renderBuffer, const void* limit)
     {
         foreach (instrument; me.instruments.data)
         {
@@ -134,210 +160,18 @@ struct MidiInputNode
         }
         me.midiEvents.shrinkTo(0);
     }
-
-    version (Windows)
+    //
+    // Input Device forwarding functions
+    //
+    final passfail stopMidiDeviceInput(T...)(T args)
     {
-        import mar.windows.winmm;
-
-        private static extern (Windows) void midiInputCallback(MidiInHandle midiHandle, uint msg, uint* instance,
-                        uint* param1, uint* param2)
-        {
-            import mar.print : formatHex;
-            import mar.windows.types : LOBYTE, HIBYTE, LOWORD, HIWORD;
-
-            import audio.midi : MidiNote, MidiMsgCategory, MidiControlCode;
-            import audio.oscillatorinstrument : globalOscillator;
-
-            alias MIDI_STATUS = LOBYTE;
-
-            switch(msg)
-            {
-            case MIM_OPEN:
-                logDebug("[MidiListenCallback] open");
-                break;
-            case MIM_CLOSE:
-                logDebug("[MidiListenCallback] close");
-                break;
-            case MIM_DATA: {
-                // param1 (low byte) = midi event
-                // param2            = timestamp
-                const status = MIDI_STATUS(param1);
-                const category = status & 0xF0;
-                if(category == MidiMsgCategory.noteOff)
-                {
-                    const note     = HIBYTE(LOWORD(param1));
-                    const velocity = LOBYTE(HIWORD(param1));
-                    const timestamp = cast(size_t)param2;
-
-                    if (note & 0x80)
-                        logError("Bad MIDI note 0x", note.formatHex, ", the MSB is set");
-                    else if (velocity & 0x80)
-                        logError("Bad MIDI velocity 0x", note.formatHex, ", the MSB is set");
-                    else
-                    {
-                        //logDebug("[MidiListenCallback] note ", note, " OFF, velocity=", velocity, " timestamp=", timestamp);
-                        const result = (cast(typeof(this)*)instance).tryAddMidiEvent(
-                            MidiEvent.makeNoteOff(timestamp, cast(MidiNote)note));
-                        if (result.failed)
-                        {
-                            logError("failed to add MIDI OFF event: ", result);
-                        }
-                    }
-                }
-                else if(category == MidiMsgCategory.noteOn)
-                {
-                    const note     = HIBYTE(LOWORD(param1));
-                    const velocity = LOBYTE(HIWORD(param1));
-                    const timestamp = cast(size_t)param2;
-                    //logDebug("[MidiListenCallback] note ", note, " ON,  velocity=", velocity, " timestamp=", timestamp);
-                    if (note & 0x80)
-                        logError("Bad MIDI note 0x", note.formatHex, ", the MSB is set");
-                    else if (velocity & 0x80)
-                        logError("Bad MIDI velocity 0x", note.formatHex, ", the MSB is set");
-                    else
-                    {
-                        const result = (cast(typeof(this)*)instance).tryAddMidiEvent(
-                            MidiEvent.makeNoteOn(timestamp, cast(MidiNote)note, velocity));
-                        if (result.failed)
-                        {
-                            logError("failed to add MIDI ON event: ", result);
-                        }
-                    }
-                }
-                else if (category == MidiMsgCategory.control)
-                {
-                    const number = HIBYTE(LOWORD(param1));
-                    const value  = LOBYTE(HIWORD(param1));
-                    const timestamp = cast(size_t)param2;
-                    if (number == MidiControlCode.sustainPedal)
-                    {
-                        bool on = value >= 64;
-                        //logDebug("[MidiListenCallback] sustain: ", on ? "ON" : "OFF");
-                        const result = (cast(typeof(this)*)instance).tryAddMidiEvent(
-                            MidiEvent.makeSustainPedal(timestamp,on));
-                        if (result.failed)
-                        {
-                            logError("failed to add MIDI event: ", result);
-                        }
-                    }
-                    else
-                    {
-                        //logDebug("[MidiListenCallback] control ", number, "=", value);
-                    }
-                }
-                else
-                {
-                    logDebug("[MidiListenCallback] data, unknown category 0x", status.formatHex);
-                }
-                //printf("[MidiListenCallback] data (event=%d, timestampe=%d)\n",
-                //(byte)param1, param2);
-                break;
-            } case MIM_LONGDATA:
-                logDebug("[MidiListenCallback] longdata");
-                break;
-            case MIM_ERROR:
-                logDebug("[MidiListenCallback] error");
-                break;
-            case MIM_LONGERROR:
-                logDebug("[MidiListenCallback] longerror");
-                break;
-            case MIM_MOREDATA:
-                logDebug("[MidiListenCallback] moredata");
-                break;
-            default:
-                logDebug("[MidiListenCallback] msg=", msg);
-                break;
-            }
-            flushDebug();
-        }
-        private bool midiDeviceInputRunning;
-        private MidiInHandle midiHandle;
+        pragma(inline, true);
+        return InputDevice.stopMidiDeviceInput(&this, args);
     }
-
-
-    passfail startMidiDeviceInput(uint midiDeviceID)
+    final passfail startMidiDeviceInput(T...)(T args)
     {
-        version (Windows)
-        {
-            if (midiDeviceInputRunning)
-            {
-                logError("this MidiInputNode is already running");
-                return passfail.fail;
-            }
-
-            passfail ret = passfail.fail; // fail by default
-            {
-                const result = midiInOpen(&midiHandle, midiDeviceID, &midiInputCallback, &this, MuitlmediaOpenFlags.callbackFunction);
-                if(result.failed)
-                {
-                    logError("midiInOpen failed, result=", result);
-                    goto LopenFailed;
-                }
-            }
-            {
-                const result = midiInStart(midiHandle);
-                if(result.failed)
-                {
-                    logError("midiInStart failed, result=", result);
-                    goto LstartFailed;
-                }
-            }
-            this.midiDeviceInputRunning = true;
-            return passfail.pass;
-        LstartFailed:
-            {
-                const result = midiInClose(midiHandle);
-                if (result.failed)
-                {
-                    logError("midiInClose failed, result=", result);
-                    ret = passfail.fail;
-                }
-            }
-        LopenFailed:
-            return ret;
-        }
-        else
-        {
-            logError("midi not implemented on this platform");
-            return passfail.fail;
-        }
-    }
-    passfail stopMidiDeviceInput()
-    {
-        version (Windows)
-        {
-            if (!midiDeviceInputRunning)
-            {
-                logError("cannot stop this MidiInputNode because it is not running");
-                return passfail.fail;
-            }
-
-            passfail ret = passfail.pass;
-            {
-                const result = midiInStop(midiHandle);
-                if (result.failed)
-                {
-                    logError("midiInStop failed, result=", result);
-                    ret = passfail.fail;
-                }
-            }
-            {
-                const result = midiInClose(midiHandle);
-                if (result.failed)
-                {
-                    logError("midiInClose failed, result=", result);
-                    ret = passfail.fail;
-                }
-            }
-            if (ret.passed)
-                midiDeviceInputRunning = false;
-            return ret;
-        }
-        else
-        {
-            logError("midi not implemented on this platform");
-            return passfail.fail;
-        }
+        pragma(inline, true);
+        return InputDevice.startMidiDeviceInput(&this, args);
     }
 }
 
