@@ -250,6 +250,8 @@ auto loadAiffSample(cstring filename)
 
     // Convert to the native format
     auto convertedSize = aiffFile.numSampleFrames * aiffFile.numChannels * RenderFormat.SampleType.sizeof;
+    //log("rawSize=", rawSoundData.length, " decompressedSize=", decompressed.length,
+    //    " convertedSize=", convertedSize);
     auto converted = cast(RenderFormat.SampleType*)malloc(convertedSize);
     if (converted is null)
         return LoadAiffResult.staticError("out of memory");
@@ -262,7 +264,8 @@ auto loadAiffSample(cstring filename)
         return LoadAiffResult.staticError("failed to convert AIFF audio to the native audio format");
     }
 
-    return LoadAiffResult.success(Sample(converted[0 .. convertedSize], cast(ubyte)aiffFile.numChannels));
+    return LoadAiffResult.success(Sample(converted[0 .. convertedSize / RenderFormat.SampleType.sizeof],
+        cast(ubyte)aiffFile.numChannels));
 }
 
 /+

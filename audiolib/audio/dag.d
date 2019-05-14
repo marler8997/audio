@@ -454,6 +454,12 @@ struct SampleInstrumentData
     }
 }
 
+//version = DropSampleInterpolation;
+//version = LinearInterpolation;
+//version = ParabolicInterpolation;
+//version = CatmullRomSpline;
+//version = HermiteInterpolation;
+version = OlliOptimal6po5o;
 alias SamplerMidiInstrument = MidiInstrumentTypeA!SamplerMidiInstrumentTypeA;
 struct SamplerMidiInstrumentTypeA
 {
@@ -466,7 +472,7 @@ struct SamplerMidiInstrumentTypeA
         size_t sampleIndex;
         float currentVolume;
         float targetVolume;
-        float sampleFraction;
+        float timeOffset;
         MidiNote note; // save so we can easily remove the note from the MidiNoteMap
         bool released;
         float reattackRestoreVolume;
@@ -474,7 +480,7 @@ struct SamplerMidiInstrumentTypeA
     static void newNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
     {
         state.sampleIndex = 0;
-        state.sampleFraction = 0;
+        state.timeOffset = 0;
         state.reattackRestoreVolume = float.nan;
     }
     static void reattackNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
@@ -498,7 +504,7 @@ struct SamplerMidiInstrumentTypeA
             if (state.currentVolume == 0)
             {
                 state.sampleIndex = 0;
-                state.sampleFraction = 0;
+                state.timeOffset = 0;
                 state.currentVolume = state.reattackRestoreVolume;
                 state.targetVolume = state.reattackRestoreVolume;
                 state.reattackRestoreVolume = float.nan;
@@ -508,31 +514,76 @@ struct SamplerMidiInstrumentTypeA
         const samples = data.samples[state.note].array;
         if (state.sampleIndex < samples.length)
         {
-            //logDebug("sample ", data.samples[state.note][state.nextSampleIndex]);
             // just do one channel for now
             if (data.samples[state.note].skew is float.nan)
             {
                 //logDebug("no skew");
+                //logDebug(samples[state.sampleIndex]);
                 addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
                     state.currentVolume * data.volumeScale * samples[state.sampleIndex]));
-                state.sampleIndex++;
+                state.sampleIndex += data.channelCount;
             }
             else
             {
                 //logDebug("skew ", data.samples[state.note].skew);
-                RenderFormat.SampleType sample = samples[state.sampleIndex];
-                if (state.sampleIndex + 1 < samples.length)
+                RenderFormat.SampleType ss0 = samples[state.sampleIndex];
+                const t = state.timeOffset;
+                version (DropSampleInterpolation)
+                    const newSample = from!"audio.interpolate".DropSample.interpolate(samples, state.sampleIndex);
+                else version (LinearInterpolation)
+                    const newSample = from!"audio.interpolate".Linear.
+                        interpolate(samples, state.sampleIndex, state.timeOffset, data.channelCount);
+                else version (ParabolicInterpolation)
+                    const newSample = from!"audio.interpolate".Parabolic.
+                        interpolate(samples, state.sampleIndex, state.timeOffset, data.channelCount);
+                else version (CatmullRomSpline)
                 {
-                    sample += (samples[state.sampleIndex+1]-sample) * state.sampleFraction;
+                    // There is a problem with this,
+                    // it doesn't sound as good as parabolic
+                    const ssneg1 = (state.sampleIndex > 0) ?
+                        samples[state.sampleIndex - 1] : ss0;
+                    const ss1 = (state.sampleIndex + data.channelCount < samples.length) ?
+                        samples[state.sampleIndex + data.channelCount] : ss0;
+                    const ss2 = (state.sampleIndex + 2*data.channelCount < samples.length) ?
+                        samples[state.sampleIndex + 2*data.channelCount] : ss1;
+                    const newSample = ss0 + 0.5 * t * (
+                        ss1 - ssneg1 + t * (
+                            (2.0*ssneg1 - 5.0*ss0 + 4.0*ss1 - ss2) + t * (
+                                3.0*(ss0 - ss1) + ss2 - ssneg1
+                            )
+                        )
+                    );
                 }
+                else version (HermiteInterpolation)
+                {
+                    // There is a problem with this,
+                    // it doesn't sound as good as parabolic
+                    const ssneg1 = (state.sampleIndex > 0) ?
+                        samples[state.sampleIndex - 1] : ss0;
+                    const ss1 = (state.sampleIndex + data.channelCount < samples.length) ?
+                        samples[state.sampleIndex + data.channelCount] : ss0;
+                    const ss2 = (state.sampleIndex + 2*data.channelCount < samples.length) ?
+                        samples[state.sampleIndex + 2*data.channelCount] : ss1;
+                    const c1 = 0.5 * (ss1 - ssneg1);
+                    const c2 = ssneg1 - 2.5*ss0 + 2*ss1 - 0.5*ss2;
+                    const c3 = 0.5*(ss2 - ssneg1) + 1.5*(ss0 - ss1);
+                    const newSample = ss0 + t * ( c1 + t * ( c2 + (t * c3)));
+                }
+                else version (OlliOptimal6po5o)
+                {
+                    const newSample = from!"audio.interpolate".OlliOptimal6po5o.
+                        interpolate(samples, state.sampleIndex, state.timeOffset, data.channelCount);
+                }
+                else static assert(0, "no interpolation version selected");
+                //log(newSample);
                 addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
-                    state.currentVolume * data.volumeScale * sample));
-                auto next = state.sampleFraction + data.samples[state.note].skew;
-                for (; next >= 1; next--)
+                    state.currentVolume * data.volumeScale * newSample));
+                auto nextTimeOffset = state.timeOffset + data.samples[state.note].skew;
+                for (; nextTimeOffset >= 1.0; nextTimeOffset -= 1.0)
                 {
-                    state.sampleIndex++;
+                    state.sampleIndex += data.channelCount;
                 }
-                state.sampleFraction = next;
+                state.timeOffset = nextTimeOffset;
             }
         }
     }
