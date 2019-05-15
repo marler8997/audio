@@ -13,53 +13,67 @@ extern (Windows) void listenCallback(MidiInHandle midiHandle, uint msg, uint* in
 			     uint* param1, uint* param2)
 {
     import mar.print : formatHex;
+    import audio.midi : MidiMsgCategory, MidiControlCode;
 
     switch(msg)
     {
     case MIM_OPEN:
-        logDebug("[MidiListenCallback] open");
+        log("midi open");
         break;
     case MIM_CLOSE:
-        logDebug("[MidiListenCallback] close");
+        log("midi close");
         break;
     case MIM_DATA: {
         // param1 (low byte) = midi event
         // param2            = timestamp
         const status = MIDI_STATUS(param1);
         const category = status & 0xF0;
-        if(category == 0x80)
+        const timestamp = cast(size_t)param2;
+        if(category == MidiMsgCategory.noteOff)
         {
             const note     = HIBYTE(LOWORD(param1));
             const velocity = LOBYTE(HIWORD(param1));
-            logDebug("[MidiListenCallback] note ", note, " OFF, velocity=", velocity);
+            log("time=", timestamp, " note ", note, " OFF, velocity=", velocity);
         }
-        else if(category == 0x90)
+        else if(category ==  MidiMsgCategory.noteOn)
         {
             const note     = HIBYTE(LOWORD(param1));
             const velocity = LOBYTE(HIWORD(param1));
-            logDebug("[MidiListenCallback] note ", note, " ON,  velocity=", velocity);
+            log("time=", timestamp, " note ", note, " ON,  velocity=", velocity);
+        }
+        else if(category ==  MidiMsgCategory.control)
+        {
+            const number = HIBYTE(LOWORD(param1));
+            const value  = LOBYTE(HIWORD(param1));
+            if (number == MidiControlCode.sustainPedal)
+            {
+                const on = value >= 64;
+                log("time=", timestamp, " sustain: ", on ? "ON" : "OFF", " timestamp=", timestamp);
+            }
+            else
+            {
+                log("time=", timestamp, " control ", number, "=", value);
+            }
         }
         else
         {
-            logDebug("[MidiListenCallback] data, unknown category 0x", status.formatHex);
+            log("time=", timestamp, " data, unknown category 0x", status.formatHex);
         }
-        //printf("[MidiListenCallback] data (event=%d, timestampe=%d)\n",
-        //(byte)param1, param2);
         break;
     } case MIM_LONGDATA:
-        logDebug("[MidiListenCallback] longdata");
+        log("longdata?");
         break;
     case MIM_ERROR:
-        logDebug("[MidiListenCallback] error");
+        log("error?");
         break;
     case MIM_LONGERROR:
-        logDebug("[MidiListenCallback] longerror");
+        log("longerror?");
         break;
     case MIM_MOREDATA:
-        logDebug("[MidiListenCallback] moredata");
+        log("moredata?");
         break;
     default:
-        logDebug("[MidiListenCallback] msg=", msg);
+        log("msg=", msg, "?");
         break;
     }
     flushDebug();
@@ -69,37 +83,14 @@ passfail listen(uint deviceID)
 {
     import mar.mem : malloc;
 
-    enum MidiBufferSize = 512;
+    auto ret = passfail.fail;
     MidiInHandle midiHandle;
-    MidiHeader midiHeader;
-
     {
         const result = midiInOpen(&midiHandle, deviceID, &listenCallback, null, MuitlmediaOpenFlags.callbackFunction);
         if(result.failed)
         {
             logError("midiInOpen failed, result=", result);
-            return passfail.fail;
-        }
-    }
-    scope (exit) midiInClose(midiHandle);
-
-    midiHeader.data = cast(ubyte*)malloc(MidiBufferSize);
-    midiHeader.size = MidiBufferSize;
-
-    {
-        const result = midiInPrepareHeader(midiHandle, &midiHeader, midiHeader.sizeof);
-        if(result.failed)
-        {
-            logError("midiInPrepareHeader failed, result=", result);
-            return passfail.fail;
-        }
-    }
-    {
-        const result = midiInAddBuffer(midiHandle, &midiHeader, midiHeader.sizeof);
-        if(result.failed)
-        {
-            logError("midiInAddBuffer failed, result=", result);
-            return passfail.fail;
+            goto LopenFailed;
         }
     }
     {
@@ -107,26 +98,48 @@ passfail listen(uint deviceID)
         if(result.failed)
         {
             logError("midiInStart failed, result=", result);
-            return passfail.fail;
+            goto LstartFailed;
         }
     }
 
-    log("Press enter to quit...");
+    log("Press Enter to quit...");
     flushLog();
+    {
+        import mar.stdio : stdin;
+        ubyte[1] buffer;
+        stdin.read(buffer);
+    }
+
+    //
+    // Cleanup
+    //
+    ret = passfail.pass;
 
     {
-        import mar.stdio;
-        import mar.windows.kernel32 : ReadFile;
-        char[8] buffer;
-        uint bytesRead;
-        ReadFile(stdin.asHandle, buffer.ptr, 1, &bytesRead, null);
+        const result = midiInStop(midiHandle);
+        if (result.failed)
+        {
+            logError("midiInStop failed, result=", result);
+            ret = passfail.fail;
+        }
     }
-    return passfail.pass;
+LstartFailed:
+    {
+        const result = midiInClose(midiHandle);
+        if (result.failed)
+        {
+            logError("midiInClose failed, result=", result);
+            ret = passfail.fail;
+        }
+    }
+LopenFailed:
+    return ret;
 }
 
 void usage()
 {
-    log("listen <input-device-id>");
+    log("TODO: add a --list option");
+    log("windowsmidilisten <input-device-id>");
 }
 int main(string[] args)
 {
