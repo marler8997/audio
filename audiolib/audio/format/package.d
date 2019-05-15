@@ -26,6 +26,10 @@ struct Pcm16Format
             dst[i] = cast(uint)src[i] << 16 | src[i];
         }
     }
+    static SampleType keepAboveZero(SampleType value)
+    {
+        return (value <= 0) ? 1 : value;
+    }
 }
 struct FloatFormat
 {
@@ -47,6 +51,10 @@ struct FloatFormat
             dst[2*i+0] = src[i];
             dst[2*i+1] = src[i];
         }
+    }
+    static SampleType keepAboveZero(SampleType value)
+    {
+        return (value <= 0.0) ? 0.000000001 : value;
     }
     static passfail copyConvert(float* dst, void* src, SampleKind kind, uint samplesPerSec, size_t sampleCount, ubyte channelCount, ubyte sampleSize)
     {

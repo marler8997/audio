@@ -50,7 +50,7 @@ struct Sample
     RenderFormat.SampleType[] array;
     ubyte channelCount;
 }
-mixin ExpectMixin!("LoadAiffResult",Sample
+mixin ExpectMixin!("LoadAiffResult", Sample
     , ErrorCase!("notImplemented", "not implemented: %", string)
     , ErrorCase!("staticError", "%", string)
     , ErrorCase!("openFileFailed", "failed to open aiff file '%'", cstring)
@@ -210,6 +210,7 @@ ParseAiffResult parseAiff(AiffFile* aiffFile, ubyte[] fileData)
 
 auto loadAiffSample(cstring filename)
 {
+    import mar.array : tryMallocArray;
     import mar.mem : malloc, free;
     import mar.file : OpenAccess, OpenFileOpt, tryOpenFile,
         MMapAccess, mmap;
@@ -247,25 +248,26 @@ auto loadAiffSample(cstring filename)
     // TODO: check that dcompressed is correct size based on audio format
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    if (aiffFile.numChannels > ubyte.max)
+        return LoadAiffResult.staticError("numChannels is greater than 255");
 
     // Convert to the native format
-    auto convertedSize = aiffFile.numSampleFrames * aiffFile.numChannels * RenderFormat.SampleType.sizeof;
+    auto totalSampleCount = aiffFile.numSampleFrames * aiffFile.numChannels;
     //log("rawSize=", rawSoundData.length, " decompressedSize=", decompressed.length,
     //    " convertedSize=", convertedSize);
-    auto converted = cast(RenderFormat.SampleType*)malloc(convertedSize);
+    auto converted = tryMallocArray!(RenderFormat.SampleType)(totalSampleCount);
     if (converted is null)
         return LoadAiffResult.staticError("out of memory");
     // Is all AIFF just PCM?
     // TODO: verify sampleRate can be casted to uint
     // TODO: verify that numChannels can be casted to ubyte
-    if (RenderFormat.copyConvert(converted, decompressed.ptr, SampleKind.int_, cast(uint)aiffFile.sampleRate,
+    if (RenderFormat.copyConvert(converted.ptr, decompressed.ptr, SampleKind.int_, cast(uint)aiffFile.sampleRate,
         aiffFile.numSampleFrames, cast(ubyte)aiffFile.numChannels, cast(ubyte)(aiffFile.sampleSize / 8)).failed)
     {
         return LoadAiffResult.staticError("failed to convert AIFF audio to the native audio format");
     }
 
-    return LoadAiffResult.success(Sample(converted[0 .. convertedSize / RenderFormat.SampleType.sizeof],
-        cast(ubyte)aiffFile.numChannels));
+    return LoadAiffResult.success(Sample(converted, cast(ubyte)aiffFile.numChannels));
 }
 
 /+

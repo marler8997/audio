@@ -175,7 +175,6 @@ struct MidiInputNodeTemplate(InputDevice)
     }
 }
 
-
 void addToEachChannel(ubyte[] channels, RenderFormat.SampleType* buffer, RenderFormat.SampleType value)
 {
     foreach (channel; channels)
@@ -183,6 +182,37 @@ void addToEachChannel(ubyte[] channels, RenderFormat.SampleType* buffer, RenderF
         buffer[channel] += value;
     }
 }
+
+enum NoteControlState
+{
+    pressed, // the note is being pressed
+    releasedWithSustain, // the was released with the sustain pedal
+    releasedNoSustain, // the note was released and is no longer sustaining
+}
+
+/*
+struct ChannelMapping
+{
+    private ubyte* mapping;
+    ubyte length;
+    this(ubyte* mapping, ubyte length)
+    {
+        this.mapping = mapping;
+        this.length = length;
+    }
+    this(ubyte[] mapping)
+    in { assert(mapping.length <= ubyte.max); } do
+    {
+        this.mapping = mapping.ptr;
+        this.length = cast(ubyte)mapping.length;
+    }
+    void addToChannel(RenderFormat.SampleType* buffer, RenderFormat.SampleType value, ubyte mappingIndex)
+    in { assert(mappingIndex < length); } do
+    {
+        buffer[mapping[mappingIndex]] += value;
+    }
+}
+*/
 
 struct OscillatorInstrumentData
 {
@@ -201,10 +231,11 @@ struct SinOscillatorMidiInstrumentTypeA(Format)
     {
         float currentVolume;
         float targetVolume;
+        float releaseMultiplier;
         float phaseIncrement;
         float phase;
         MidiNote note; // save so we can easily remove the note from the MidiNoteMap
-        bool released;
+        NoteControlState controlState;
     }
     static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
@@ -240,10 +271,11 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
     {
         float currentVolume;
         float targetVolume;
+        float releaseMultiplier;
         float nextSample;
         float increment;
         MidiNote note; // save so we can easily remove the note from the MidiNoteMap
-        bool released;
+        NoteControlState controlState;
     }
     static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
@@ -267,26 +299,70 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
     }
 }
 
-struct SkewedSample
+struct MidiControlledSample
 {
     RenderFormat.SampleType[] array;
     float skew;
+    ubyte velocityRangeLength;
 }
+
 struct SampleInstrumentData
 {
     import audio.midi : MidiNote;
 
-    // Bug: can't use static array here with -betterC, pulls in TypeInfo
-    SkewedSample[/*MidiNote.max + 1*/] samples;
+    MidiControlledSample[][] velocitySortedSamplesByNote;
     float volumeScale;
     ubyte channelCount;
-    this(SkewedSample[/*MidiNote.max + 1*/] samples, float volumeScale, ubyte channelCount)
+    this(MidiControlledSample[][] velocitySortedSamplesByNote, float volumeScale, byte channelCount)
+    in { assert(velocitySortedSamplesByNote.length == MidiNote.max + 1); } do
     {
-        this.samples = samples;
+        foreach (note, velocitySortedSamples; velocitySortedSamplesByNote)
+        {
+            //logDebug("NOTE ", note, " samplesLength=", velocitySortedSamples.length);
+            ubyte total = 0;
+            foreach (sample; velocitySortedSamples)
+            {
+                /*
+                logDebug("  array.length=", sample.array.length,
+                    " skew=", sample.skew,
+                    " velocityRangeLength=", sample.velocityRangeLength);
+                */
+                ushort next = cast(ushort)total + sample.velocityRangeLength;
+                if (next > ubyte.max)
+                {
+                    logError("velocity samples for note ", note, " range is too large: ", next);
+                    foreach (sample2; velocitySortedSamples)
+                    {
+                        logError("  ", sample2.velocityRangeLength);
+                    }
+                    assert(0, "bad velocity ranges");
+                }
+                assert(cast(ushort)total + sample.velocityRangeLength <= ubyte.max);
+                total = cast(ubyte)next;
+            }
+        }
+        this.velocitySortedSamplesByNote = velocitySortedSamplesByNote;
         this.volumeScale = volumeScale;
         this.channelCount = channelCount;
     }
+    // returns ubyte.max if there is no samples
+    ubyte getVelocityRangeIndex(MidiNote note, ubyte velocity) const
+    {
+        auto velocitySortedSamples = velocitySortedSamplesByNote[note];
+        if (velocitySortedSamples.length == 0)
+            return ubyte.max;
+        ubyte rangeStart = 0;
+        ubyte index = 0;
+        for (; ; index++)
+        {
+            rangeStart += velocitySortedSamples[index].velocityRangeLength;
+            if (velocity <= rangeStart || index + 1 >= velocitySortedSamples.length)
+                break;
+        }
+        return index;
+    }
 }
+
 
 //version = DropSampleInterpolation;
 //version = LinearInterpolation;
@@ -306,25 +382,30 @@ struct SamplerMidiInstrumentTypeA
         size_t sampleIndex;
         float currentVolume;
         float targetVolume;
+        float releaseMultiplier;
         float timeOffset;
-        MidiNote note; // save so we can easily remove the note from the MidiNoteMap
-        bool released;
         float reattackRestoreVolume;
+        MidiNote note; // save so we can easily remove the note from the MidiNoteMap
+        ubyte currentSampleVelocityIndex;
+        ubyte reattackVelocity;
+        NoteControlState controlState;
+
     }
     static void newNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
     {
         state.sampleIndex = 0;
         state.timeOffset = 0;
         state.reattackRestoreVolume = float.nan;
+        state.currentSampleVelocityIndex = data.getVelocityRangeIndex(event.noteOn.note, event.noteOn.velocity);
     }
     static void reattackNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
     {
         import mar.math : abs;
 
-        const samples = data.samples[state.note].array;
         if (state.reattackRestoreVolume is float.nan)
         {
             state.reattackRestoreVolume = state.targetVolume;
+            state.reattackVelocity = event.noteOn.velocity;
             state.targetVolume = 0;
         }
     }
@@ -342,40 +423,58 @@ struct SamplerMidiInstrumentTypeA
                 state.currentVolume = state.reattackRestoreVolume;
                 state.targetVolume = state.reattackRestoreVolume;
                 state.reattackRestoreVolume = float.nan;
+                state.currentSampleVelocityIndex = data.getVelocityRangeIndex(state.note, state.reattackVelocity);
             }
         }
 
-        const samples = data.samples[state.note].array;
-        if (state.sampleIndex < samples.length)
-        {
+        if (state.currentSampleVelocityIndex == ubyte.max)
+            return;
+        const sampleStruct = data.velocitySortedSamplesByNote[state.note][state.currentSampleVelocityIndex];
+        const samples = sampleStruct.array;
+        if (state.sampleIndex + channels.length >= samples.length)
+            return; // no sample left to render
+
             // just do one channel for now
-            if (data.samples[state.note].skew is float.nan)
+        if (sampleStruct.skew is float.nan)
+        {
+            foreach (ubyte channel; channels)
             {
                 //logDebug("no skew");
                 //logDebug(samples[state.sampleIndex]);
+                const value = cast(RenderFormat.SampleType)(
+                    state.currentVolume * data.volumeScale * samples[state.sampleIndex + channel]);
+                buffer[channel] += value;
+                /*
                 addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
                     state.currentVolume * data.volumeScale * samples[state.sampleIndex]));
-                state.sampleIndex += data.channelCount;
+                */
             }
-            else
+            state.sampleIndex += data.channelCount;
+        }
+        else
+        {
+            foreach (ubyte channel; channels)
             {
                 //logDebug("skew ", data.samples[state.note].skew);
-                RenderFormat.SampleType ss0 = samples[state.sampleIndex];
+                const ss0 = samples[state.sampleIndex + channel];
                 const t = state.timeOffset;
                 version (DropSampleInterpolation)
-                    const newSample = from!"audio.interpolate".DropSample.interpolate(samples, state.sampleIndex);
+                    const newSample = from!"audio.interpolate".DropSample.interpolate(samples, state.sampleIndex + channel);
                 else version (LinearInterpolation)
                     const newSample = from!"audio.interpolate".Linear.
-                        interpolate(samples, state.sampleIndex, state.timeOffset, data.channelCount);
+                        interpolate(samples, state.sampleIndex + channel, state.timeOffset, data.channelCount);
                 else version (ParabolicInterpolation)
                     const newSample = from!"audio.interpolate".Parabolic.
-                        interpolate(samples, state.sampleIndex, state.timeOffset, data.channelCount);
+                        interpolate(samples, state.sampleIndex + channel, state.timeOffset, data.channelCount);
                 else version (CatmullRomSpline)
                 {
                     // There is a problem with this,
                     // it doesn't sound as good as parabolic
-                    const ssneg1 = (state.sampleIndex > 0) ?
-                        samples[state.sampleIndex - 1] : ss0;
+                    /+
+                    // TODO: need to adjust sampleIndex with channel count
+                    const ssneg1 = (state.sampleIndex!!!!!!! > 0) ?
+                        samples[state.sampleIndex!!!!!!! - 1] : ss0;
+                    +/
                     const ss1 = (state.sampleIndex + data.channelCount < samples.length) ?
                         samples[state.sampleIndex + data.channelCount] : ss0;
                     const ss2 = (state.sampleIndex + 2*data.channelCount < samples.length) ?
@@ -392,8 +491,11 @@ struct SamplerMidiInstrumentTypeA
                 {
                     // There is a problem with this,
                     // it doesn't sound as good as parabolic
-                    const ssneg1 = (state.sampleIndex > 0) ?
-                        samples[state.sampleIndex - 1] : ss0;
+                    /+
+                    // TODO: need to adjust sampleIndex with channel count
+                    const ssneg1 = (state.sampleIndex !!!!!!!> 0) ?
+                        samples[state.sampleIndex!!!!!!! - 1] : ss0;
+                    +/
                     const ss1 = (state.sampleIndex + data.channelCount < samples.length) ?
                         samples[state.sampleIndex + data.channelCount] : ss0;
                     const ss2 = (state.sampleIndex + 2*data.channelCount < samples.length) ?
@@ -406,19 +508,25 @@ struct SamplerMidiInstrumentTypeA
                 else version (OlliOptimal6po5o)
                 {
                     const newSample = from!"audio.interpolate".OlliOptimal6po5o.
-                        interpolate(samples, state.sampleIndex, state.timeOffset, data.channelCount);
+                        interpolate(samples, state.sampleIndex + channel, state.timeOffset, data.channelCount);
                 }
                 else static assert(0, "no interpolation version selected");
                 //log(newSample);
+                const newSampleScaled = cast(RenderFormat.SampleType)(
+                    state.currentVolume * data.volumeScale * newSample);
+                //logDebug("channel ", channel, " value ", newSampleScaled);
+                buffer[channel] += newSampleScaled;
+                /*
                 addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
                     state.currentVolume * data.volumeScale * newSample));
-                auto nextTimeOffset = state.timeOffset + data.samples[state.note].skew;
-                for (; nextTimeOffset >= 1.0; nextTimeOffset -= 1.0)
-                {
-                    state.sampleIndex += data.channelCount;
-                }
-                state.timeOffset = nextTimeOffset;
+                */
             }
+            auto nextTimeOffset = state.timeOffset + sampleStruct.skew;
+            for (; nextTimeOffset >= 1.0; nextTimeOffset -= 1.0)
+            {
+                state.sampleIndex += data.channelCount;
+            }
+            state.timeOffset = nextTimeOffset;
         }
     }
 }
@@ -462,7 +570,7 @@ struct MidiInstrumentTypeA(Renderer)
                 {
                     // TODO: change should be gradual, not immediate
                     state.targetVolume = (event.noteOn.velocity / 127f) * 1.0;
-                    state.released = false;
+                    state.controlState = NoteControlState.pressed;
                     Renderer.reattackNote(me.instrumentData, &event, state);
                 }
                 else
@@ -470,8 +578,9 @@ struct MidiInstrumentTypeA(Renderer)
                     Renderer.NoteState newNoteState = void;
                     newNoteState.currentVolume = event.noteOn.velocity / 127.0 * 1.0;
                     newNoteState.targetVolume = newNoteState.currentVolume;
+                    newNoteState.releaseMultiplier = 0.9999;// default value
                     newNoteState.note = event.noteOn.note;
-                    newNoteState.released = false;
+                    newNoteState.controlState = NoteControlState.pressed;
                     Renderer.newNote(me.instrumentData, &event, &newNoteState);
                     me.notes.set(newNoteState);
                 }
@@ -484,7 +593,14 @@ struct MidiInstrumentTypeA(Renderer)
                 }
                 else
                 {
-                    state.released = true;
+                    if (me.sustainPedal)
+                    {
+                        state.controlState = NoteControlState.releasedWithSustain;
+                    }
+                    else
+                    {
+                        state.controlState = NoteControlState.releasedNoSustain;
+                    }
                 }
                 break;
             case MidiEventType.sustainPedal:
@@ -505,30 +621,46 @@ struct MidiInstrumentTypeA(Renderer)
             for (auto next = buffer; next < limit;
                 next += (audio.global.channelCount * Renderer.FormatAlias.SampleType.sizeof))
             {
-                if (note.released && !me.sustainPedal)
+                // Adjust volume
+                switch (note.controlState)
                 {
-                    note.currentVolume -= .0001;
-                    if (note.currentVolume <= 0)
-                    {
-                        removeNote = true;
+                    case NoteControlState.pressed:
+                        if (note.targetVolume != note.currentVolume)
+                        {
+                            enum VolumeChangeVelocity = .001; // Note: should take frequency into account
+                            if (note.targetVolume > note.currentVolume)
+                            {
+                                note.currentVolume += VolumeChangeVelocity;
+                                if (note.currentVolume > note.targetVolume)
+                                    note.currentVolume = note.targetVolume;
+                            }
+                            else
+                            {
+                                note.currentVolume -= VolumeChangeVelocity;
+                                if (note.currentVolume < note.targetVolume)
+                                    note.currentVolume = note.targetVolume;
+                            }
+                        }
                         break;
-                    }
-                }
-                else if (note.targetVolume != note.currentVolume)
-                {
-                    enum VolumeChangeVelocity = .001; // Note: should take frequency into account
-                    if (note.targetVolume > note.currentVolume)
-                    {
-                        note.currentVolume += VolumeChangeVelocity;
-                        if (note.currentVolume > note.targetVolume)
-                            note.currentVolume = note.targetVolume;
-                    }
-                    else
-                    {
-                        note.currentVolume -= VolumeChangeVelocity;
-                        if (note.currentVolume < note.targetVolume)
-                            note.currentVolume = note.targetVolume;
-                    }
+                    case NoteControlState.releasedWithSustain:
+                        if (!me.sustainPedal)
+                        {
+                            note.controlState = NoteControlState.releasedNoSustain;
+                            goto case NoteControlState.releasedNoSustain;
+                        }
+                        break;
+                    case NoteControlState.releasedNoSustain:
+                        note.currentVolume *= note.releaseMultiplier;
+                        // lower notes don't sound as good when they are released early
+                        enum ReleaseVolumeThreshold = 0.001; // TODO: make this configurable?
+                        if (note.currentVolume <= ReleaseVolumeThreshold)
+                        {
+                            //logDebug("release");
+                            removeNote = true;
+                            break;
+                        }
+                        break;
+                    default: assert(0, "codebug");
                 }
 
                 Renderer.renderNote(me.instrumentData, &note, channels, cast(RenderFormat.SampleType*)next);

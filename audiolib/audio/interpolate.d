@@ -21,9 +21,9 @@ struct Linear
     static RenderFormat.SampleType interpolate(const(RenderFormat.SampleType)[] samples,
         size_t s0Index, float time, ubyte channelCount)
     {
-        const s0 = samples[s0Index];
-        const s1 = (s0Index + channelCount < samples.length) ?
-            samples[s0Index + channelCount] : s0;
+        const s0 = samples[s0Index + channelCount];
+        const s1 = (s0Index + 2*channelCount < samples.length) ?
+            samples[s0Index + 2*channelCount] : s0;
         return s0 + (s1 - s0) * time;
     }
 }
