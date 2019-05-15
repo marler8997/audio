@@ -1,4 +1,5 @@
 #include "render.h"
+#include "waveout.h"
 
 int main(int argc, char* argv[])
 {
