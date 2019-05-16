@@ -6,7 +6,7 @@ Revised Version: http://www-mmsp.ece.mcgill.ca/Documents/AudioFormats/AIFF/Docs/
 The revised version added the ability to specify compression.
 
 */
-module audio.format.aiff;
+module audio.fileformat.aiff;
 
 import mar.aliasseq;
 import mar.expect;
@@ -215,7 +215,7 @@ auto loadAiffSample(cstring filename)
     import mar.file : OpenAccess, OpenFileOpt, tryOpenFile,
         MMapAccess, mmap;
 
-    import audio.format : SampleKind;
+    import audio.renderformat.options : SampleKind;
 
     auto file = tryOpenFile(filename, OpenFileOpt(OpenAccess.readOnly));
     if (!file.isValid)

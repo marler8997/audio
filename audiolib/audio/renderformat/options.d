@@ -1,4 +1,4 @@
-module audio.format;
+module audio.renderformat.options;
 
 import mar.passfail;
 

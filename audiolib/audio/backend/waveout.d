@@ -191,7 +191,7 @@ passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
     import mar.mem;
     static import audio.global;
     import audio.renderformat;
-    import audio.format : Pcm16Format, FloatFormat;
+    import audio.renderformat.options : Pcm16Format, FloatFormat;
 
     //
     // Setup audio format

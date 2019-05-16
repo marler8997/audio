@@ -228,7 +228,7 @@ passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument, cons
     for (size_t i = 0;; i++)
     {
         import mar.print : sprintMallocSentinel;
-        import audio.format.aiff : loadAiffSample;
+        import audio.fileformat.aiff : loadAiffSample;
 
         auto range = ranges[i];
         if (range.sampleNote == MidiNote.none)
