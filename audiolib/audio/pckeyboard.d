@@ -1,5 +1,6 @@
 module audiolib.audio.pckeyboard;
 
+import mar.from;
 import mar.passfail;
 
 import audio.log;
@@ -14,8 +15,6 @@ struct PCKeyboardMidiInputDevice
 
     static passfail startMidiDeviceInput(PCKeyboardInputNode* node)
     {
-        import mar.windows.kernel32 : CreateThread;
-
         if (node.inputDevice.running)
         {
             logError("this PCKeyboardMidiInputDevice is already running");
@@ -219,27 +218,19 @@ final void exitGlobalCriticalSection()
 }
 passfail startInputThread()
 {
+    import mar.thread : startThread;
+
     enterGlobalCriticalSection();
     scope (exit) exitGlobalCriticalSection();
     if (!global.inputThreadRunning)
     {
-        version (Windows)
+        auto result = startThread(&inputThreadEntry);
+        if (result.failed)
         {
-            import mar.windows.kernel32 : GetLastError, CreateThread;
-            //logDebug("CreateThread for pc keyboard input...");
-            auto result = CreateThread(null,
-                0,
-                &inputThreadEntry,
-                null,
-                0,
-                null);
-            if (result.isNull)
-            {
-                logError("CreateThread for keyboard input failed, e=", GetLastError());
-                return passfail.fail;
-            }
-            global.inputThread = result;
+            logError("failed to start thread for pc keyboard input: ", result);
+            return passfail.fail;
         }
+        global.inputThread = result.val;
         global.inputThreadRunning = true;
     }
     return passfail.pass;
@@ -274,8 +265,7 @@ passfail joinInputThread()
 }
 
 
-private extern (Windows) uint inputThreadEntry(void* param)
-{
+mixin from!"mar.thread".threadEntryMixin!("inputThreadEntry", q{
     import mar.print : formatHex;
     import mar.stdio : stdin;
     import mar.windows.types : ConsoleFlag, EventType, InputRecord;
@@ -388,4 +378,4 @@ LinputLoop:
     }
     log("stdin input thread exiting...");
     return 0;
-}
+});

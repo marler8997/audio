@@ -1,5 +1,6 @@
 module audio.render;
 
+import mar.from;
 import mar.passfail;
 import mar.math : sin;
 
@@ -29,6 +30,10 @@ struct Global
         SRWLock lock;
     }
     ArrayBuilder!(RootRenderNode!void*) rootRenderNodes;
+    //
+    // The generators directly connected to the audio backend
+    //
+    //ArrayBuilder!(AudioGenerator!void*) rootGenerators;
 }
 __gshared Global global;
 
@@ -81,8 +86,7 @@ void addRootRenderNode(RootRenderNode!void* renderer)
     //printf("Added a renderer (there are now %d renderers)\n", currentRendererCount);
 }
 
-extern (Windows) uint renderThread(void* param)
-{
+mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
     /*
     // Set priority
     if(!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
@@ -110,7 +114,7 @@ extern (Windows) uint renderThread(void* param)
     */
     renderLoop!RenderFormat(backend.bufferSampleCount);
     return 0;
-}
+});
 
 passfail renderLoop(Format)(uint bufferSampleCount)
 {

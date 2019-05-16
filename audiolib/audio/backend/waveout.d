@@ -329,5 +329,3 @@ void dumpWaveFormat(WaveFormatExtensible* waveFormat)
     logDebug("offsetof channelMask=", waveFormat.channelMask.offsetof);
     logDebug("offsetof subFormat=", waveFormat.subFormat.offsetof);
 }
-
-

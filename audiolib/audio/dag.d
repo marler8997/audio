@@ -6,6 +6,41 @@ import mar.passfail;
 import audio.log;
 import audio.renderformat;
 static import audio.global;
+import audio.midi : MidiNoteMapView;
+
+// TODO: move this?
+mixin template Inherit(T)
+{
+    T base;
+    static assert(base.offsetof == 0, "Inherit!(" ~ T.stringof ~ ") needs to be the first field with offset 0");
+    final auto asBase() inout { return cast(T*)&this; }
+}
+
+//
+// A "BaseTemplate" is a pattern where the base type is a template that takes a
+// type that will only be referenced as a pointer. This means that every template instance
+// should have the same binary implementation. So:
+//     BaseTemplate!void should be equivalent to any BaseTemplate!T
+//
+mixin template InheritBaseTemplate(alias Template)
+{
+    // verify this is a valid BaseTemplate
+    static assert(Template!void.sizeof == Template!(typeof(this)).sizeof);
+
+    Template!(typeof(this)) base;
+    static assert(base.offsetof == 0, "InheritTemplateVoidBase!(" ~ T.stringof ~ ") needs to be the first field with offset 0");
+    final auto asBase() inout { return cast(Template!void*)&this; }
+}
+
+/*
+struct AudioGenerator(T)
+{
+    // NOTE: this tree structure is not very cache friendly
+    //       should flatten out the memory for the render node tree
+    //ArrayBuilder!(Node!void) children;
+    void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit) mix;
+}
+*/
 
 
 // A node with no inputs
@@ -111,7 +146,7 @@ struct MidiInputNodeTemplate(InputDevice)
     import audio.render : RenderState;
     import audio.midi : MidiNote, MidiNoteMap;
 
-    RootRenderNode!(typeof(this)) base;
+    mixin InheritBaseTemplate!RootRenderNode;
     private ArrayBuilder!(MidiInstrument!void*) instruments;
     //bool[MidiNote.max + 1] onMap;
     ArrayBuilder!MidiEvent midiEvents;
@@ -121,7 +156,6 @@ struct MidiInputNodeTemplate(InputDevice)
     {
         this.base.renderNextBuffer = &renderNextBuffer;
     }
-    final auto asBase() inout { return cast(RootRenderNode!void*)&this; }
 
     final passfail tryAddInstrument(MidiInstrument!void* instrument)
     {
@@ -211,6 +245,19 @@ struct ChannelMapping
 }
 */
 
+struct NoteStateBase
+{
+    import audio.midi : MidiNote;
+
+    float currentVolume;
+    float targetVolume;
+    float releaseMultiplier;
+    MidiNote note; // save so we can easily remove the note from the MidiNoteMap
+    NoteControlState controlState;
+}
+
+
+
 struct OscillatorInstrumentData
 {
     float volumeScale;
@@ -226,13 +273,9 @@ struct SinOscillatorMidiInstrumentTypeA(Format)
     alias InstrumentData = OscillatorInstrumentData;
     struct NoteState
     {
-        float currentVolume;
-        float targetVolume;
-        float releaseMultiplier;
+        mixin Inherit!NoteStateBase;
         float phaseIncrement;
         float phase;
-        MidiNote note; // save so we can easily remove the note from the MidiNoteMap
-        NoteControlState controlState;
     }
     static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
@@ -266,13 +309,9 @@ struct SawOscillatorMidiInstrumentTypeA(Format)
     alias InstrumentData = OscillatorInstrumentData;
     struct NoteState
     {
-        float currentVolume;
-        float targetVolume;
-        float releaseMultiplier;
+        mixin Inherit!NoteStateBase;
         float nextSample;
         float increment;
-        MidiNote note; // save so we can easily remove the note from the MidiNoteMap
-        NoteControlState controlState;
     }
     static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
@@ -376,17 +415,12 @@ struct SamplerMidiInstrumentTypeA
     alias InstrumentData = SampleInstrumentData;
     struct NoteState
     {
+        mixin Inherit!NoteStateBase;
         size_t sampleIndex;
-        float currentVolume;
-        float targetVolume;
-        float releaseMultiplier;
         float timeOffset;
         float reattackRestoreVolume;
-        MidiNote note; // save so we can easily remove the note from the MidiNoteMap
         ubyte currentSampleVelocityIndex;
         ubyte reattackVelocity;
-        NoteControlState controlState;
-
     }
     static void newNote(ref SampleInstrumentData data, MidiEvent* event, NoteState* state)
     {
@@ -401,9 +435,9 @@ struct SamplerMidiInstrumentTypeA
 
         if (state.reattackRestoreVolume is float.nan)
         {
-            state.reattackRestoreVolume = state.targetVolume;
+            state.reattackRestoreVolume = state.base.targetVolume;
             state.reattackVelocity = event.noteOn.velocity;
-            state.targetVolume = 0;
+            state.base.targetVolume = 0;
         }
     }
     static void renderNote(ref SampleInstrumentData data,
@@ -413,20 +447,20 @@ struct SamplerMidiInstrumentTypeA
 
         if (state.reattackRestoreVolume !is float.nan)
         {
-            if (state.currentVolume == 0)
+            if (state.base.currentVolume == 0)
             {
                 state.sampleIndex = 0;
                 state.timeOffset = 0;
-                state.currentVolume = state.reattackRestoreVolume;
-                state.targetVolume = state.reattackRestoreVolume;
+                state.base.currentVolume = state.reattackRestoreVolume;
+                state.base.targetVolume = state.reattackRestoreVolume;
                 state.reattackRestoreVolume = float.nan;
-                state.currentSampleVelocityIndex = data.getVelocityRangeIndex(state.note, state.reattackVelocity);
+                state.currentSampleVelocityIndex = data.getVelocityRangeIndex(state.base.note, state.reattackVelocity);
             }
         }
 
         if (state.currentSampleVelocityIndex == ubyte.max)
             return;
-        const sampleStruct = data.velocitySortedSamplesByNote[state.note][state.currentSampleVelocityIndex];
+        const sampleStruct = data.velocitySortedSamplesByNote[state.base.note][state.currentSampleVelocityIndex];
         const samples = sampleStruct.array;
         if (state.sampleIndex + channels.length >= samples.length)
             return; // no sample left to render
@@ -439,7 +473,7 @@ struct SamplerMidiInstrumentTypeA
                 //logDebug("no skew");
                 //logDebug(samples[state.sampleIndex]);
                 const value = cast(RenderFormat.SampleType)(
-                    state.currentVolume * data.volumeScale * samples[state.sampleIndex + channel]);
+                    state.base.currentVolume * data.volumeScale * samples[state.sampleIndex + channel]);
                 buffer[channel] += value;
                 /*
                 addToEachChannel(channels, buffer, cast(RenderFormat.SampleType)(
@@ -510,7 +544,7 @@ struct SamplerMidiInstrumentTypeA
                 else static assert(0, "no interpolation version selected");
                 //log(newSample);
                 const newSampleScaled = cast(RenderFormat.SampleType)(
-                    state.currentVolume * data.volumeScale * newSample);
+                    state.base.currentVolume * data.volumeScale * newSample);
                 //logDebug("channel ", channel, " value ", newSampleScaled);
                 buffer[channel] += newSampleScaled;
                 /*
@@ -528,15 +562,32 @@ struct SamplerMidiInstrumentTypeA
     }
 }
 
+T stepCloserTo(T)(T value, T target, T increment)
+in { assert(increment > 0); } do
+{
+    if (value < target)
+    {
+        value += increment;
+        if (value > target)
+            value = target;
+    }
+    else
+    {
+        value -= increment;
+        if (value < target)
+            value = target;
+    }
+    return value;
+}
+
 struct MidiInstrumentTypeA(Renderer)
 {
     import audio.midi : MidiNote, MidiNoteMap;
     import audio.render : RenderState;
 
-    MidiInstrument!(typeof(this)) base;
-    static assert(base.offsetof == 0);
+    mixin InheritBaseTemplate!MidiInstrument;
 
-    MidiNoteMap!(Renderer.NoteState, ".note") notes;
+    MidiNoteMap!(Renderer.NoteState, ".base.note") notes;
     Renderer.InstrumentData instrumentData;
     bool sustainPedal;
 
@@ -546,8 +597,14 @@ struct MidiInstrumentTypeA(Renderer)
         this.notes.initialize();
         this.instrumentData = instrumentData;
     }
-    final auto asBase() inout { return cast(MidiInstrument!void*)&this; }
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // TODO: this function is probably too large to be in a template
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     static void renderNextBuffer(typeof(this)* me, ubyte[] channels, void* buffer, const void* limit, MidiEvent[] midiEvents)
     {
         // update notes
@@ -566,18 +623,18 @@ struct MidiInstrumentTypeA(Renderer)
                 if (state !is null)
                 {
                     // TODO: change should be gradual, not immediate
-                    state.targetVolume = (event.noteOn.velocity / 127f) * 1.0;
-                    state.controlState = NoteControlState.pressed;
+                    state.base.targetVolume = (event.noteOn.velocity / 127f) * 1.0;
+                    state.base.controlState = NoteControlState.pressed;
                     Renderer.reattackNote(me.instrumentData, &event, state);
                 }
                 else
                 {
                     Renderer.NoteState newNoteState = void;
-                    newNoteState.currentVolume = event.noteOn.velocity / 127.0 * 1.0;
-                    newNoteState.targetVolume = newNoteState.currentVolume;
-                    newNoteState.releaseMultiplier = 0.9999;// default value
-                    newNoteState.note = event.noteOn.note;
-                    newNoteState.controlState = NoteControlState.pressed;
+                    newNoteState.base.currentVolume = event.noteOn.velocity / 127.0 * 1.0;
+                    newNoteState.base.targetVolume = newNoteState.base.currentVolume;
+                    newNoteState.base.releaseMultiplier = 0.9999;// default value
+                    newNoteState.base.note = event.noteOn.note;
+                    newNoteState.base.controlState = NoteControlState.pressed;
                     Renderer.newNote(me.instrumentData, &event, &newNoteState);
                     me.notes.set(newNoteState);
                 }
@@ -592,11 +649,11 @@ struct MidiInstrumentTypeA(Renderer)
                 {
                     if (me.sustainPedal)
                     {
-                        state.controlState = NoteControlState.releasedWithSustain;
+                        state.base.controlState = NoteControlState.releasedWithSustain;
                     }
                     else
                     {
-                        state.controlState = NoteControlState.releasedNoSustain;
+                        state.base.controlState = NoteControlState.releasedNoSustain;
                     }
                 }
                 break;
@@ -619,38 +676,28 @@ struct MidiInstrumentTypeA(Renderer)
                 next += (audio.global.channelCount * Renderer.FormatAlias.SampleType.sizeof))
             {
                 // Adjust volume
-                switch (note.controlState)
+                switch (note.base.controlState)
                 {
                     case NoteControlState.pressed:
-                        if (note.targetVolume != note.currentVolume)
+                        if (note.base.targetVolume != note.base.currentVolume)
                         {
-                            enum VolumeChangeVelocity = .001; // Note: should take frequency into account
-                            if (note.targetVolume > note.currentVolume)
-                            {
-                                note.currentVolume += VolumeChangeVelocity;
-                                if (note.currentVolume > note.targetVolume)
-                                    note.currentVolume = note.targetVolume;
-                            }
-                            else
-                            {
-                                note.currentVolume -= VolumeChangeVelocity;
-                                if (note.currentVolume < note.targetVolume)
-                                    note.currentVolume = note.targetVolume;
-                            }
+                            enum VolumeChangeVelocity = 0.001; // note: should take frequency into account
+                            note.base.currentVolume = note.base.currentVolume.stepCloserTo(
+                                note.base.targetVolume, VolumeChangeVelocity);
                         }
                         break;
                     case NoteControlState.releasedWithSustain:
                         if (!me.sustainPedal)
                         {
-                            note.controlState = NoteControlState.releasedNoSustain;
+                            note.base.controlState = NoteControlState.releasedNoSustain;
                             goto case NoteControlState.releasedNoSustain;
                         }
                         break;
                     case NoteControlState.releasedNoSustain:
-                        note.currentVolume *= note.releaseMultiplier;
+                        note.base.currentVolume *= note.base.releaseMultiplier;
                         // lower notes don't sound as good when they are released early
                         enum ReleaseVolumeThreshold = 0.001; // TODO: make this configurable?
-                        if (note.currentVolume <= ReleaseVolumeThreshold)
+                        if (note.base.currentVolume <= ReleaseVolumeThreshold)
                         {
                             //logDebug("release");
                             removeNote = true;
@@ -665,7 +712,7 @@ struct MidiInstrumentTypeA(Renderer)
 
             if (removeNote)
             {
-                const result = me.notes.remove(note.note);
+                const result = me.notes.remove(note.base.note);
                 if (result != noteIndex)
                 {
                     logError("removed note at index ", noteIndex, " but it returned ", result);

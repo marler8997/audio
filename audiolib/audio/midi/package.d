@@ -405,34 +405,60 @@ enum MidiControlCode
     sustainPedal = 64,
 }
 
+
+struct MidiNoteMapView(T)
+{
+    //private ubyte[MidiNote.max + 1] indexTable;
+    // The offsetof indexTable must match the offsetof indexTable in MidiNoteMap
+    //static assert(indexTable.offsetof == 0);
+    MidiNoteMap!(void, null)* noteMap;
+    size_t elementSize;
+}
+
 struct MidiNoteMap(T, string noteMember)
 {
     import mar.array : StaticArray;
 
-    private StaticArray!(T, MidiNote.max + 1) array;
     private ubyte[MidiNote.max + 1] indexTable;
+    // The offsetof indexTable must match the offsetof indexTable in GenericMidiNoteMap
+    //static assert(indexTable.offsetof == 0);
 
-    void initialize()
+    static if (!is(T == void))
+        private StaticArray!(T, MidiNote.max + 1) array;
+    else
+        private void[0] array;
+
+    auto getView(ViewType)() inout
+    {
+        return MidiNoteMapView!ViewType(cast(MidiNoteMap!(void, null)*)&this);
+    }
+
+
+    final void initialize()
     {
         import mar.mem : memset;
         memset(indexTable.ptr, ubyte.max, indexTable.length);
     }
-    auto length() const { return array.length; }
-    auto asArray() inout { return array.data; }
-    auto tryGetRef(MidiNote note) inout
+    final auto length() const { return array.length; }
+    final auto asArray() inout { return array.data; }
+    final auto tryGetRef(MidiNote note) inout
     {
         auto index = indexTable[note];
         return (index == ubyte.max) ? null : &array[index];
     }
-    auto get(MidiNote note, T default_) inout
+
+    static if (!is(T == void))
     {
-        auto index = indexTable[note];
-        return (index == ubyte.max) ? default_ : array[index];
+        final auto get(MidiNote note, T default_) inout
+        {
+            auto index = indexTable[note];
+            return (index == ubyte.max) ? default_ : array[index];
+        }
     }
 
     static if (noteMember !is null)
     {
-        void set(T data)
+        final void set(T data)
         {
             auto index = indexTable[mixin("data" ~ noteMember)];
             if (index != ubyte.max)
@@ -447,7 +473,7 @@ struct MidiNoteMap(T, string noteMember)
             }
         }
         // Returns: index the note was in, ubyte.max if it's not added
-        ubyte remove(MidiNote note)
+        final ubyte remove(MidiNote note)
         {
             const index = indexTable[note];
             if (index != ubyte.max)
@@ -461,7 +487,7 @@ struct MidiNoteMap(T, string noteMember)
             }
             return index;
         }
-        ubyte removeAt(ubyte index)
+        final ubyte removeAt(ubyte index)
         in {
             assert(index < array.length);
             assert(indexTable[mixin("array[index]" ~ noteMember)] == index);
@@ -478,18 +504,21 @@ struct MidiNoteMap(T, string noteMember)
     }
     else
     {
-        void set(MidiNote note, T data)
+        static if (!is(T == void))
         {
-            auto index = indexTable[note];
-            if (index != ubyte.max)
+            final void set(MidiNote note, T data)
             {
-                array[index] = data;
-            }
-            else
-            {
-                index = cast(byte)array.length;
-                indexTable[note] = index;
-                array.tryPut(data).enforce();
+                auto index = indexTable[note];
+                if (index != ubyte.max)
+                {
+                    array[index] = data;
+                }
+                else
+                {
+                    index = cast(byte)array.length;
+                    indexTable[note] = index;
+                    array.tryPut(data).enforce();
+                }
             }
         }
     }
