@@ -62,8 +62,106 @@ extern (C) int main(string[] args)
         return 1;
     }
 
-    //return go();
-    return go2();
+    return go();
+}
+
+//version = SinWave;
+//version = SawWave;
+version = GrandPiano;
+
+version = UseMidiInstrument;
+//version = UsePCKeyboard;
+int go()
+{
+    version (Windows)
+        import mar.windows.kernel32 : CreateThread;
+
+    import audio.dag;
+    import backend = audio.backend;
+
+    version (UsePCKeyboard)
+    {
+        auto pcKeyboardInput = from!"audio.pckeyboard".PCKeyboardInputNode();
+        pcKeyboardInput.initialize();
+    }
+    version (UseMidiInstrument)
+    {
+        auto midiInput = from!"audio.windowsmidi".WindowsMidiInputNode();
+        midiInput.initialize();
+    }
+    version (SinWave)
+    {
+        auto sinWave = SinOscillatorMidiInstrument!RenderFormat();
+        sinWave.initialize(OscillatorInstrumentData(.1));
+        version (UsePCKeyboard)
+            pcKeyboardInput.tryAddInstrument(sinWave.asBase).enforce();
+        version (UseMidiInstrument)
+            midiInput.tryAddInstrument(sinWave.asBase).enforce();
+    }
+    version (SawWave)
+    {
+        auto sawWave = SawOscillatorMidiInstrument!RenderFormat();
+        sawWave.initialize(OscillatorInstrumentData(.1));
+        version (UsePCKeyboard)
+            pcKeyboardInput.tryAddInstrument(sawWave.asBase).enforce();
+        version (UseMidiInstrument)
+            midiInput.tryAddInstrument(sawWave.asBase).enforce();
+    }
+    version (GrandPiano)
+    {
+        SamplerMidiInstrument grandPiano;
+        if (loadGrandPiano(&grandPiano, from!"audio.midi".stdFreq).failed)
+            return 1; // fail
+        //if (loadGrandPiano(&grandPiano, from!"audio.midi".justC4Freq).failed)
+        //    return 1; // fail
+        version (UsePCKeyboard)
+            pcKeyboardInput.tryAddInstrument(grandPiano.asBase).enforce();
+        version (UseMidiInstrument)
+            midiInput.tryAddInstrument(grandPiano.asBase).enforce();
+    }
+
+    version (UsePCKeyboard)
+    {
+        pcKeyboardInput.startMidiDeviceInput().enforce();
+        addRootRenderNode(pcKeyboardInput.asBase);
+    }
+    version (UseMidiInstrument)
+    {
+        midiInput.startMidiDeviceInput(0).enforce(); // just hardcode MIDI device 0 for now
+        addRootRenderNode(midiInput.asBase);
+    }
+
+    backend.open();
+    import audio.render : renderThread;
+    version (Windows)
+    {
+        auto audioWriteThread = CreateThread(null,
+            0,
+            &renderThread,
+            null,
+            0,
+            null);
+        if (audioWriteThread.isNull)
+        {
+            import mar.windows.kernel32 : GetLastError;
+            logError("CreateThread failed, e=", GetLastError());
+            return 1;
+        }
+    }
+
+    {
+        import audio.pckeyboard : startInputThread, joinInputThread;
+        startInputThread();
+        //log("Press ESC or Enter to quit");
+        log("Press ESC to quit");
+        flushLog();
+        joinInputThread();
+    }
+
+    backend.close();
+    version (UseMidiInstrument)
+        midiInput.stopMidiDeviceInput();
+    return 0;
 }
 
 struct SampleRange
@@ -187,177 +285,4 @@ passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument, cons
     }
     instrument.initialize(SampleInstrumentData(samplesByNote, 2.0, sharedChannelCount));
     return passfail.pass;
-}
-
-//version = SinWave;
-//version = SawWave;
-version = GrandPiano;
-
-version = UseMidiInstrument;
-//version = UsePCKeyboard;
-int go2()
-{
-    version (Windows)
-        import mar.windows.kernel32 : CreateThread;
-
-    import audio.dag;
-    import backend = audio.backend;
-
-    version (UsePCKeyboard)
-    {
-        auto pcKeyboardInput = from!"audio.pckeyboard".PCKeyboardInputNode();
-        pcKeyboardInput.initialize();
-    }
-    version (UseMidiInstrument)
-    {
-        auto midiInput = from!"audio.windowsmidi".WindowsMidiInputNode();
-        midiInput.initialize();
-    }
-    version (SinWave)
-    {
-        auto sinWave = SinOscillatorMidiInstrument!RenderFormat();
-        sinWave.initialize(OscillatorInstrumentData(.1));
-        version (UsePCKeyboard)
-            pcKeyboardInput.tryAddInstrument(sinWave.asBase).enforce();
-        version (UseMidiInstrument)
-            midiInput.tryAddInstrument(sinWave.asBase).enforce();
-    }
-    version (SawWave)
-    {
-        auto sawWave = SawOscillatorMidiInstrument!RenderFormat();
-        sawWave.initialize(OscillatorInstrumentData(.1));
-        version (UsePCKeyboard)
-            pcKeyboardInput.tryAddInstrument(sawWave.asBase).enforce();
-        version (UseMidiInstrument)
-            midiInput.tryAddInstrument(sawWave.asBase).enforce();
-    }
-    version (GrandPiano)
-    {
-        SamplerMidiInstrument grandPiano;
-        if (loadGrandPiano(&grandPiano, from!"audio.midi".stdFreq).failed)
-            return 1; // fail
-        //if (loadGrandPiano(&grandPiano, from!"audio.midi".justC4Freq).failed)
-        //    return 1; // fail
-        version (UsePCKeyboard)
-            pcKeyboardInput.tryAddInstrument(grandPiano.asBase).enforce();
-        version (UseMidiInstrument)
-            midiInput.tryAddInstrument(grandPiano.asBase).enforce();
-    }
-
-    version (UsePCKeyboard)
-    {
-        pcKeyboardInput.startMidiDeviceInput().enforce();
-        addRootRenderNode(pcKeyboardInput.asBase);
-    }
-    version (UseMidiInstrument)
-    {
-        midiInput.startMidiDeviceInput(0).enforce(); // just hardcode MIDI device 0 for now
-        addRootRenderNode(midiInput.asBase);
-    }
-
-    backend.open();
-    import audio.render : renderThread;
-    version (Windows)
-    {
-        auto audioWriteThread = CreateThread(null,
-            0,
-            &renderThread,
-            null,
-            0,
-            null);
-        if (audioWriteThread.isNull)
-        {
-            import mar.windows.kernel32 : GetLastError;
-            logError("CreateThread failed, e=", GetLastError());
-            return 1;
-        }
-    }
-
-    {
-        import audio.pckeyboard : startInputThread, joinInputThread;
-        startInputThread();
-        //log("Press ESC or Enter to quit");
-        log("Press ESC to quit");
-        flushLog();
-        joinInputThread();
-    }
-
-    backend.close();
-    version (UseMidiInstrument)
-        midiInput.stopMidiDeviceInput();
-    return 0;
-}
-
-ubyte go()
-{
-    version (Windows)
-    {
-        import mar.windows.kernel32 : CreateThread;
-        import mar.windows.winmm : MuitlmediaOpenFlags, WAVE_MAPPER;
-    }
-
-    import backend = audio.backend;
-    import audio.backend;
-
-    /*
-    {
-        import mar.windows.types : ThreadPriority;
-        import mar.windows.kernel32 : GetCurrentThread, GetThreadPriority, SetThreadPriority;
-        const thread = GetCurrentThread();
-        const priority = GetThreadPriority(thread);
-        logDebug("ThreadPriority=", priority);
-        if (priority < ThreadPriority.timeCritical)
-        {
-            logDebug("Setting thread priority to ", ThreadPriority.timeCritical);
-            if (SetThreadPriority(thread, ThreadPriority.timeCritical).failed)
-            {
-                logError("Failed to set thread priority, e=", GetLastError());
-                return 1; // fail
-            }
-        }
-    }
-    */
-
-
-    /*
-    dumpWaveFormat(&global.waveFormat);
-    logDebug("WAVE_MAPPER=", WAVE_MAPPER);
-    logDebug("WaveoutOpenFlags.callbackFunction=", WaveoutOpenFlags.callbackFunction);
-    */
-    backend.open();
-    import audio.render : renderThread;
-    version (Windows)
-    {
-        auto audioWriteThread = CreateThread(null,
-            0,
-            &renderThread,
-            null,
-            0,
-            null);
-    }
-
-    version(UseMidiInstrument)
-    {
-        version (Windows)
-        {
-            static import audio.windowsmidiinstrument;
-            audio.windowsmidiinstrument.readNotes!RenderFormat(0);
-        }
-        else
-        {
-            logError("midi not implemented on this platform");
-        }
-    }
-    else
-    {
-        /*
-        BROKEN:
-            audio.obj : error LNK2019: unresolved external symbol __memsetn referenced in function audio.pckeyboardinstrument.readNotes!(audio.format.FloatFormat).readNotes()
-        static import audio.pckeyboardinstrument;
-        audio.pckeyboardinstrument.readNotes!RenderFormat();
-        */
-    }
-    backend.close();
-
-    return 0;
 }

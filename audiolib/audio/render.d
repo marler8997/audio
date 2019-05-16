@@ -20,58 +20,6 @@ enum RenderState
     release,
 }
 
-// NOTE: This Audio Renderer Uses a renderBlock function
-// pointer and a RenderState.  There may be some
-// renderers that don't need a render state but instead just
-// change the renderBlock pointer.
-struct AudioRenderer(T)
-{
-    void function(T* obj, void* block, const void* limit) renderBlock;
-    float volume; // 0.0 to 1.0
-    RenderState state;
-}
-
-struct SinOscillator
-{
-    AudioRenderer!SinOscillator base;
-    float increment; // READONLY
-    float currentPhase;
-    void initialize(Format)(uint samplesPerSecond, float frequency, float volume)
-    {
-        this.base.renderBlock = &renderSin!Format;
-        this.base.volume = volume;
-        this.base.state = RenderState.sustain;
-        this.increment = TWO_PI * frequency / samplesPerSecond;
-        this.currentPhase = 0;
-    }
-}
-void renderSin(Format)(SinOscillator* o, void* block, const void* limit)
-{
-    auto currentPhase = o.currentPhase;
-    scope (exit) o.currentPhase = currentPhase;
-
-    while(block < limit)
-    {
-        if (o.base.state == RenderState.release)
-        {
-            o.base.volume -= .0001;
-            if (o.base.volume <= 0)
-            {
-                o.base.state = RenderState.off;
-                break;
-            }
-        }
-
-        Format.getSampleRef(block) += cast(Format.SampleType)(o.base.volume * sin(currentPhase) * Format.MaxAmplitude);
-
-        currentPhase += o.increment;
-        if(currentPhase > TWO_PI)
-            currentPhase -= TWO_PI;
-
-        block += Format.SampleType.sizeof;
-    }
-}
-
 struct Global
 {
     import mar.arraybuilder : ArrayBuilder;
@@ -80,7 +28,6 @@ struct Global
         import mar.windows.types : SRWLock;
         SRWLock lock;
     }
-    ArrayBuilder!(AudioRenderer!void*) renderers;
     ArrayBuilder!(RootRenderNode!void*) rootRenderNodes;
 }
 __gshared Global global;
@@ -116,24 +63,6 @@ final void exitRenderCriticalSection()
     }
 }
 
-void addRenderer(T)(AudioRenderer!T* renderer)
-{
-    addRenderer(cast(AudioRenderer!void*)renderer);
-}
-void addRenderer(AudioRenderer!void* renderer)
-{
-    import mar.mem : realloc;
-    enterRenderCriticalSection();
-    scope (exit) exitRenderCriticalSection();
-    auto result = global.renderers.tryPut(renderer);
-    if (result.failed)
-    {
-        logError("failed to add renderer: ", result);
-        assert(0);
-    }
-    //printf("Added a renderer (there are now %d renderers)\n", currentRendererCount);
-}
-
 void addRootRenderNode(T)(RootRenderNode!T* renderer)
 {
     addRootRenderNode(cast(RootRenderNode!void*)renderer);
@@ -152,34 +81,6 @@ void addRootRenderNode(RootRenderNode!void* renderer)
     //printf("Added a renderer (there are now %d renderers)\n", currentRendererCount);
 }
 
-void render(ubyte[] channels, void* buffer, const void* limit)
-{
-    import mar.mem : zero;
-    zero(buffer, limit - buffer);
-    enterRenderCriticalSection();
-    scope (exit) exitRenderCriticalSection();
-
-    //logDebug("render");
-    for (size_t i = 0; i < global.renderers.length; i++)
-    {
-        auto renderer = global.renderers[i];
-
-        if(renderer.state != RenderState.off)
-            renderer.renderBlock(renderer, buffer, limit);
-
-        if(renderer.state == RenderState.off)
-        {
-            global.renderers.removeAt(i);
-            i--; // rewind
-        }
-    }
-    for (size_t i = 0; i < global.rootRenderNodes.length; i++)
-    {
-        auto node = global.rootRenderNodes[i];
-        node.renderNextBuffer(node, channels, buffer, limit);
-    }
-}
-
 extern (Windows) uint renderThread(void* param)
 {
     /*
@@ -187,6 +88,24 @@ extern (Windows) uint renderThread(void* param)
     if(!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
     printf("SetPriorityClass failed\n");
     return 1;
+    }
+    */
+    /*
+    {
+        import mar.windows.types : ThreadPriority;
+        import mar.windows.kernel32 : GetCurrentThread, GetThreadPriority, SetThreadPriority;
+        const thread = GetCurrentThread();
+        const priority = GetThreadPriority(thread);
+        logDebug("ThreadPriority=", priority);
+        if (priority < ThreadPriority.timeCritical)
+        {
+            logDebug("Setting thread priority to ", ThreadPriority.timeCritical);
+            if (SetThreadPriority(thread, ThreadPriority.timeCritical).failed)
+            {
+                logError("Failed to set thread priority, e=", GetLastError());
+                return 1; // fail
+            }
+        }
     }
     */
     renderLoop!RenderFormat(backend.bufferSampleCount);
@@ -259,5 +178,20 @@ passfail renderLoop(Format)(ubyte[] channels, void* renderBuffer, const void* re
             // error already logged
             return passfail.fail;
         }
+    }
+}
+
+void render(ubyte[] channels, void* buffer, const void* limit)
+{
+    import mar.mem : zero;
+    zero(buffer, limit - buffer);
+    enterRenderCriticalSection();
+    scope (exit) exitRenderCriticalSection();
+
+    //logDebug("render");
+    for (size_t i = 0; i < global.rootRenderNodes.length; i++)
+    {
+        auto node = global.rootRenderNodes[i];
+        node.renderNextBuffer(node, channels, buffer, limit);
     }
 }

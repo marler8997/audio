@@ -17,7 +17,6 @@ struct WindowsMidiInputDevice
         import mar.windows.types : LOBYTE, HIBYTE, LOWORD, HIWORD;
 
         import audio.midi : MidiNote, MidiMsgCategory, MidiControlCode;
-        import audio.oscillatorinstrument : globalOscillator;
 
         alias MIDI_STATUS = LOBYTE;
 

@@ -76,9 +76,6 @@ struct MidiEvent
 // A node that inputs midi notes
 struct MidiInstrument(T)
 {
-    import audio.render : RenderState;
-    import audio.midi : MidiNote;
-
     void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit, MidiEvent[] midiEvents) renderNextBuffer;
 }
 
