@@ -1,25 +1,61 @@
-// probably move to mar?
 module audio.timer;
+
+import mar.passfail;
+
+import audio.log;
+
+version (Windows)
+{
+    private __gshared long performanceFrequency;
+}
+passfail timerInit()
+{
+    version (Windows)
+    {
+        import mar.windows.kernel32 : QueryPerformanceFrequency;
+        if(QueryPerformanceFrequency(&performanceFrequency).failed)
+        {
+            logError("QueryPerformanceFrequency failed");
+            return passfail.fail;
+        }
+    }
+    //logDebug("performance frequency: ", performanceFrequency);
+    return passfail.pass;
+}
 
 struct Timer
 {
-    long startTime;
+    version (Windows)
+    {
+        import mar.windows.kernel32 : QueryPerformanceCounter;
+
+        long startTime;
+    }
     void start()
     {
-        QueryPerformanceCounter(&startTime);
+        version (Windows)
+        {
+            QueryPerformanceCounter(&startTime);
+        }
     }
     auto getElapsedStop()
     {
-        long now;
-        QueryPerformanceCounter(&now);
-        return now - startTime;
+        version (Windows)
+        {
+            long now;
+            QueryPerformanceCounter(&now);
+            return now - startTime;
+        }
     }
     auto getElapsedRestart()
     {
-        long now;
-        QueryPerformanceCounter(&now);
-        auto result = now - startTime;
-        startTime = now;
+        version (Windows)
+        {
+            long now;
+            QueryPerformanceCounter(&now);
+            auto result = now - startTime;
+            startTime = now;
+        }
         return result;
     }
 }

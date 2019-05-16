@@ -6,9 +6,9 @@ import mar.math : sin;
 
 import audio.log;
 static import audio.global;
+static import audio.backend;
 import audio.renderformat;
 import audio.dag : AudioGenerator;
-import backend = audio.backend;
 
 struct Global
 {
@@ -114,7 +114,7 @@ mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
     }
     */
 
-    const renderBufferSize = backend.bufferSampleFramesCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof;
+    const renderBufferSize = audio.global.bufferSampleFrameCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof;
     //logDebug("renderBufferSize ", renderBufferSize);
     auto renderBuffer = malloc(renderBufferSize);
     if(renderBuffer == null)
@@ -172,7 +172,7 @@ passfail renderLoop(ubyte[] channels, void* renderBuffer, const void* renderLimi
             import mar.process : exit;
             exit(1);
         }
-        if (backend.writeBuffer(renderBuffer).failed)
+        if (audio.backend.writeBuffer(renderBuffer).failed)
         {
             // error already logged
             return passfail.fail;

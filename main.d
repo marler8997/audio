@@ -5,28 +5,42 @@ import mar.passfail;
 
 import audio.log;
 static import audio.global;
+static import audio.backend;
 import audio.renderformat;
 import audio.render;
-import audio.backend : AudioFormat;
-static import audio.backend;
+
+void setupGlobalSettings()
+{
+    //audio.global.channelCount = 1;
+    audio.global.channelCount = 2;
+    //audio.global.sampleFramesPerSec = 44100;
+    audio.global.sampleFramesPerSec = 48000;
+    logDebug(audio.global.channelCount, " channels at ", audio.global.sampleFramesPerSec, " Hz");
+
+    //const inputDelayMillis = 10;
+    //const inputDelayMillis = 20;
+    const inputDelayMillis = 30;
+    //const inputDelayMillis = 100;
+    audio.global.bufferSampleFrameCount = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
+    log("bufferSampleFrameCount=", audio.global.bufferSampleFrameCount, " inputDelay=", inputDelayMillis, " ms");
+
+    version (Windows)
+    {
+        audio.global.backend = audio.backend.AudioBackend.waveout;
+        //audio.global.backend = audio.backend.AudioBackend.wasapi;
+    }
+}
 
 extern (C) int main(string[] args)
 {
     //{import audio.midi : unittest1; unittest1(); }
 
     // This should always be done first thing
-    if(renderPlatformInit().failed)
-        return 1;
-    if(audio.backend.platformInit().failed)
-        return 1;
-    if(from!"audio.pckeyboard".pckeyboardInit().failed)
-        return 1;
+    from!"audio.timer".timerInit().enforce();
+    renderPlatformInit().enforce();
+    from!"audio.pckeyboard".pckeyboardInit().enforce();
 
-    //audio.global.channelCount = 1;
-    audio.global.channelCount = 2;
-    //audio.global.sampleFramesPerSec = 44100;
-    audio.global.sampleFramesPerSec = 48000;
-    logDebug(audio.global.channelCount, " channels at ", audio.global.sampleFramesPerSec, " Hz");
+    setupGlobalSettings();
 
     {
         import mar.sentinel : lit;
@@ -46,24 +60,6 @@ extern (C) int main(string[] args)
         logDebug("loadPlugin returned ", cast(void*)aeffect);
     }
 
-    //
-    // Note: waveOut function will probably not be able to
-    //       keep up with a buffer size less then 23 ms (around 1024 samples @ 44100HZ).
-    //       This is a limitation on waveOut API (which is pretty high level).
-    //       To get better latency, I'll need to use CoreAudio.
-    //
-    //const inputDelayMillis = 10;
-    //const inputDelayMillis = 20;
-    const inputDelayMillis = 30;
-    //const inputDelayMillis = 100;
-    const bufferSampleFrameSize = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
-    log("bufferSampleFrameSize=", bufferSampleFrameSize, " inputDelay=", inputDelayMillis, " ms");
-    if(audio.backend.setAudioFormatAndBufferConfig(bufferSampleFrameSize).failed)
-    {
-        // error already logged
-        return 1;
-    }
-
     return go();
 }
 
@@ -77,7 +73,6 @@ int go()
 {
     import mar.arraybuilder;
     import audio.dag;
-    import backend = audio.backend;
 
     ArrayBuilder!(MidiInstrument!void*) instruments;
     version (SinWave)
@@ -126,7 +121,7 @@ int go()
         midiInput.startMidiDeviceInput(0).enforce(); // just hardcode MIDI device 0 for now
     }
 
-    backend.open();
+    audio.backend.open().enforce();
 
     {
         import mar.thread;
@@ -148,7 +143,7 @@ int go()
         joinInputThread();
     }
 
-    backend.close();
+    audio.backend.close();
     version (UseMidiInstrument)
         midiInput.stopMidiDeviceInput();
     return 0;

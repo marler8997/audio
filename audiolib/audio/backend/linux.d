@@ -6,11 +6,11 @@ import audio.log;
 
 // don't know what the linux audio api is yet, this
 // is just a stub for now
-auto bufferSampleFramesCount() { return global.bufferSampleFramesCount; }
+auto bufferSampleFrameCount() { return global.bufferSampleFrameCount; }
 
 struct Global
 {
-    uint bufferSampleFramesCount;
+    uint bufferSampleFrameCount;
 }
 __gshared Global global;
 
@@ -18,9 +18,9 @@ passfail platformInit() { return passfail.pass; }
 void open() { }
 void close() { }
 
-passfail setAudioFormatAndBufferConfig(uint bufferSampleFramesCount)
+passfail setAudioFormatAndBufferConfig(uint bufferSampleFrameCount)
 {
-    global.bufferSampleFramesCount = bufferSampleFramesCount;
+    global.bufferSampleFrameCount = bufferSampleFrameCount;
     return passfail.pass;
 }
 

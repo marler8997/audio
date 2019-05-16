@@ -1,6 +1,7 @@
-module audio.backend.waveout;
+module audio.backend.wasapi;
 
 import mar.passfail;
+/*
 import mar.mem : zero;
 import mar.c : cstring;
 
@@ -14,30 +15,15 @@ import mar.windows.winmm;
 import mar.windows.waveout :
     WaveFormatTag, WaveoutHandle, WaveFormatEx, ChannelFlags, KSDataFormat,
     WaveFormatExtensible, WaveHeader, WaveOutputMessage;
-
+*/
 import audio.log;
 
-struct CustomWaveHeader
-{
-  WaveHeader base;
-  Handle freeEvent;
-  //long writeTime;
-  //long setEventTime;
-}
-
-version = UseBackBuffer;
-version (UseBackBuffer)
-{
-    enum PlayBufferCount = 2;
-}
-else
-{
-    enum PlayBufferCount = 1;
-}
 
 struct GlobalData
 {
+    /*
     WaveoutHandle waveOut;
+    AudioFormat audioFormatID;
     WaveFormatExtensible waveFormat;
     CustomWaveHeader[PlayBufferCount] waveHeaders;
     CustomWaveHeader *frontBuffer;
@@ -45,17 +31,16 @@ struct GlobalData
     {
         CustomWaveHeader *backBuffer;
     }
-    uint bufferSampleFrameCount;
-    uint playBufferSize;
+    */
+    //uint playBufferSize;
 }
 private __gshared GlobalData global;
 
-
 passfail open()
 {
-    if (setupGlobalData().failed)
-        return passfail.fail;
-
+    logError("wasapi open not implemented");
+    return passfail.fail;
+    /*
     const result = waveOutOpen(&global.waveOut,
         WAVE_MAPPER,
         &global.waveFormat.format,
@@ -69,12 +54,17 @@ passfail open()
         return passfail.fail;
     }
     return passfail.pass;
+    */
 }
 passfail close()
 {
+    logError("wasapi close not implemented");
+    return passfail.fail;
+    /*
     if (waveOutClose(global.waveOut).failed)
         return passfail.fail;
     return passfail.pass;
+    */
 }
 
 /**
@@ -82,9 +72,11 @@ Writes the given renderBuffer to the audio backend.
 Also blocks until the next buffer needs to be rendered.
 This blocking characterstic is what keeps the render thread from spinning.
 */
-version (UseBackBuffer)
 passfail writeBuffer(void* renderBuffer)
 {
+    logError("wasapi writeBuffer not implemented");
+    return passfail.fail;
+    /+
     import mar.mem : memcpy;
     import mar.windows.types : INFINITE;
     import mar.windows.kernel32 : GetLastError, WaitForSingleObject;
@@ -97,7 +89,7 @@ passfail writeBuffer(void* renderBuffer)
 
     // Since we are using the same format as Render format, no need to convert
     memcpy(global.backBuffer.base.data, renderBuffer,
-        audio.global.bufferSampleFrameCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof);
+        bufferSampleFrameCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof);
     /*
     if (audio.global.channelCount == 1)
     {
@@ -160,14 +152,17 @@ passfail writeBuffer(void* renderBuffer)
     auto temp = global.frontBuffer;
     global.frontBuffer = global.backBuffer;
     global.backBuffer = temp;
-    return passfail.pass;
+    +/
 }
 
 // TODO: define a function to get the AudioFormat string (platform dependent?)
 
 // 0 = success
-private passfail setupGlobalData()
+passfail setAudioFormatAndBufferConfig(uint bufferSampleFrameCount)
 {
+    logError("wasapi setAudioFormatAndBufferConfig not impl");
+    return passfail.fail;
+    /*
     import mar.mem;
     static import audio.global;
     import audio.renderformat;
@@ -178,9 +173,9 @@ private passfail setupGlobalData()
     //
     // For now just match the render format so we don't have to convert
     static if (is(RenderFormat == Pcm16Format))
-        const audioFormatID = WaveFormatTag.pcm;
+        global.audioFormatID = WaveFormatTag.pcm;
     else static if (is(RenderFormat == FloatFormat))
-        const audioFormatID = WaveFormatTag.float_;
+        global.audioFormatID = WaveFormatTag.float_;
     else static assert("waveout does not support this render format");
 
     global.waveFormat.format.samplesPerSec  = audio.global.sampleFramesPerSec;
@@ -192,12 +187,12 @@ private passfail setupGlobalData()
 
     global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * audio.global.sampleFramesPerSec;
 
-    if(audioFormatID == WaveFormatTag.pcm)
+    if(global.audioFormatID == WaveFormatTag.pcm)
     {
         global.waveFormat.format.tag        = WaveFormatTag.pcm;
         global.waveFormat.format.extraSize  = 0; // Size of extra info
     }
-    else if(audioFormatID == WaveFormatTag.float_)
+    else if(global.audioFormatID == WaveFormatTag.float_)
     {
         global.waveFormat.format.tag         = WaveFormatTag.extensible;
         global.waveFormat.format.extraSize   = 22; // Size of extra info
@@ -215,12 +210,13 @@ private passfail setupGlobalData()
     }
     else
     {
-        logError("Unsupported format", audioFormatID);
+        logError("Unsupported format", global.audioFormatID);
         return passfail.fail;
     }
 
     // Setup Buffers
-    global.playBufferSize = audio.global.bufferSampleFrameCount * global.waveFormat.format.blockAlign;
+    global.bufferSampleFrameCount = bufferSampleFrameCount;
+    global.playBufferSize = bufferSampleFrameCount * global.waveFormat.format.blockAlign;
     foreach (i; 0 .. PlayBufferCount)
     {
         if (global.waveHeaders[i].base.data)
@@ -246,65 +242,5 @@ private passfail setupGlobalData()
     }
 
     return passfail.pass;
-}
-
-extern (Windows) void waveOutCallback(WaveoutHandle waveOut, uint msg, uint* instance,
-    uint* param1, uint* param2)
-{
-    //logDebug("waveOutCallback (instance=0x%p,param1=0x%p,param2=0x%p)\n",
-    //instance, param1, param2);
-    switch(msg)
-    {
-    case WaveOutputMessage.open:
-        logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_OPEN)");
-        break;
-    case WaveOutputMessage.close:
-        logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_CLOSE)");
-        break;
-    case WaveOutputMessage.done:
-        //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_DONE)");
-        {
-            auto header = cast(CustomWaveHeader*)param1;
-            //printf("[DEBUG] header (dwBufferLength=%d,data=0x%p)\n",
-            //header->dwBufferLength, header->data);
-            //QueryPerformanceCounter(&header.setEventTime);
-            SetEvent(header.freeEvent);
-        }
-        break;
-    default:
-        logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, ")");
-        break;
-    }
-    flushDebug();
-}
-
-void dumpWaveFormat(WaveFormatExtensible* waveFormat)
-{
-    import mar.print : formatHex;
-    logDebug("WaveFormat:");
-    logDebug(" validBitsPerSample=", waveFormat.validBitsPerSample);
-    logDebug(" channelMask=0x", waveFormat.channelMask.formatHex);
-    logDebug(" subFormat=", waveFormat.subFormat.a.formatHex
-        , "-", waveFormat.subFormat.b.formatHex
-        , "-", waveFormat.subFormat.c.formatHex
-        , "-", waveFormat.subFormat.d[0].formatHex
-        , "-", waveFormat.subFormat.d[1].formatHex
-        , "-", waveFormat.subFormat.d[2].formatHex
-        , "-", waveFormat.subFormat.d[3].formatHex
-        , "-", waveFormat.subFormat.d[4].formatHex
-        , "-", waveFormat.subFormat.d[5].formatHex
-        , "-", waveFormat.subFormat.d[6].formatHex
-        , "-", waveFormat.subFormat.d[7].formatHex
-    );
-    logDebug(" format.tag=", waveFormat.format.tag);
-    logDebug(" format.channels=", waveFormat.format.channelCount);
-    logDebug(" format.samplesPerSec=", waveFormat.format.samplesPerSec);
-    logDebug(" format.avgBytesPerSec=", waveFormat.format.avgBytesPerSec);
-    logDebug(" format.blockAlign=", waveFormat.format.blockAlign);
-    logDebug(" format.bitsPerSample=", waveFormat.format.bitsPerSample);
-    logDebug(" format.extraSize=", waveFormat.format.extraSize);
-
-    logDebug("sizeof WaveFormatEx=", waveFormat.format.sizeof);
-    logDebug("offsetof channelMask=", waveFormat.channelMask.offsetof);
-    logDebug("offsetof subFormat=", waveFormat.subFormat.offsetof);
+    */
 }
