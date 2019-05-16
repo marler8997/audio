@@ -407,6 +407,60 @@ enum MidiControlCode
     sustainPedal = 64,
 }
 
+enum MidiEventType : ubyte
+{
+    noteOn = 0,
+    noteOff = 1,
+    sustainPedal = 2,
+}
+struct MidiEvent
+{
+    import audio.midi : MidiNote;
+
+    size_t timestamp;
+    MidiEventType type;
+    union
+    {
+        private static struct NoteOn
+        {
+            MidiNote note;
+            ubyte velocity;
+        }
+        NoteOn noteOn;
+        private static struct NoteOff
+        {
+            MidiNote note;
+            ubyte velocity;
+        }
+        NoteOff noteOff;
+        bool sustainPedal;
+    }
+    static makeNoteOn(size_t timestamp, MidiNote note, ubyte velocity)
+    {
+        MidiEvent event = void;
+        event.timestamp = timestamp;
+        event.type = MidiEventType.noteOn;
+        event.noteOn.note = note;
+        event.noteOn.velocity = velocity;
+        return event;
+    }
+    static makeNoteOff(size_t timestamp, MidiNote note)
+    {
+        MidiEvent event = void;
+        event.timestamp = timestamp;
+        event.type = MidiEventType.noteOff;
+        event.noteOff.note = note;
+        return event;
+    }
+    static makeSustainPedal(size_t timestamp, bool on)
+    {
+        MidiEvent event = void;
+        event.timestamp = timestamp;
+        event.type = MidiEventType.sustainPedal;
+        event.sustainPedal = on;
+        return event;
+    }
+}
 
 struct MidiNoteMapView(T)
 {

@@ -6,14 +6,14 @@ import mar.passfail;
 import audio.log;
 import audio.renderformat;
 static import audio.global;
-import audio.midi : MidiNoteMapView;
+import audio.midi : MidiNoteMapView, MidiEventType, MidiEvent;
 
 // TODO: move this?
 mixin template Inherit(T)
 {
     T base;
     static assert(base.offsetof == 0, "Inherit!(" ~ T.stringof ~ ") needs to be the first field with offset 0");
-    final auto asBase() inout { return cast(T*)&this; }
+    final inout(T)* asBase() inout { return cast(inout(T)*)&this; }
 }
 
 //
@@ -22,154 +22,97 @@ mixin template Inherit(T)
 // should have the same binary implementation. So:
 //     BaseTemplate!void should be equivalent to any BaseTemplate!T
 //
-mixin template InheritBaseTemplate(alias Template)
+mixin template ForwardInheritBaseTemplate(alias Template, LeafType)
 {
     // verify this is a valid BaseTemplate
-    static assert(Template!void.sizeof == Template!(typeof(this)).sizeof);
+    static assert(Template!void.sizeof == Template!(LeafType).sizeof);
 
-    Template!(typeof(this)) base;
+    Template!LeafType base;
     static assert(base.offsetof == 0, "InheritTemplateVoidBase!(" ~ T.stringof ~ ") needs to be the first field with offset 0");
-    final auto asBase() inout { return cast(Template!void*)&this; }
+    final inout(Template!void)* asBase() inout { return cast(inout(Template!void)*)&this; }
+}
+mixin template InheritBaseTemplate(alias Template)
+{
+    mixin ForwardInheritBaseTemplate!(Template, typeof(this));
 }
 
-/*
 struct AudioGenerator(T)
 {
-    // NOTE: this tree structure is not very cache friendly
-    //       should flatten out the memory for the render node tree
-    //ArrayBuilder!(Node!void) children;
+    // NOTE: this tree structure is probably not very cache friendly.
+    //       mabye there's a way to flatten out the memory for the render node tree?
+
     void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit) mix;
-}
-*/
 
+    // Some generators may need to know how many output nodes are connected
+    passfail function(T* context, void* outputNode) connectOutputNode;
+    // Some generators may need to know how many output nodes are connected
+    passfail function(T* context, void* outputNode) disconnectOutputNode;
 
-// A node with no inputs
-struct RootRenderNode(T)
-{
-    // NOTE: this tree structure is not very cache friendly
-    //       should flatten out the memory for the render node tree
-    //ArrayBuilder!(Node!void) children;
-    void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit) renderNextBuffer;
-}
-
-
-enum MidiEventType : ubyte
-{
-    noteOn = 0,
-    noteOff = 1,
-    sustainPedal = 2,
-}
-struct MidiEvent
-{
-    import audio.midi : MidiNote;
-
-    size_t timestamp;
-    MidiEventType type;
-    union
-    {
-        private static struct NoteOn
-        {
-            MidiNote note;
-            ubyte velocity;
-        }
-        NoteOn noteOn;
-        private static struct NoteOff
-        {
-            MidiNote note;
-            ubyte velocity;
-        }
-        NoteOff noteOff;
-        bool sustainPedal;
-    }
-    static makeNoteOn(size_t timestamp, MidiNote note, ubyte velocity)
-    {
-        MidiEvent event = void;
-        event.timestamp = timestamp;
-        event.type = MidiEventType.noteOn;
-        event.noteOn.note = note;
-        event.noteOn.velocity = velocity;
-        return event;
-    }
-    static makeNoteOff(size_t timestamp, MidiNote note)
-    {
-        MidiEvent event = void;
-        event.timestamp = timestamp;
-        event.type = MidiEventType.noteOff;
-        event.noteOff.note = note;
-        return event;
-    }
-    static makeSustainPedal(size_t timestamp, bool on)
-    {
-        MidiEvent event = void;
-        event.timestamp = timestamp;
-        event.type = MidiEventType.sustainPedal;
-        event.sustainPedal = on;
-        return event;
-    }
+    // This let's the audio generator that is can clean up any state for this frame.
+    // This function must be called after each buffer is done being rendered.
+    // This function may be called more than once before the next mix/set call.
+    void function(T* context, void* outputNode) renderFinished;
 }
 
 // A node that inputs midi notes
 struct MidiInstrument(T)
 {
-    void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit, MidiEvent[] midiEvents) renderNextBuffer;
+    import mar.arraybuilder;
+
+    //
+    // New Interface
+    //
+    mixin ForwardInheritBaseTemplate!(AudioGenerator, T);
+    ArrayBuilder!(MidiInputNode!void*) inputNodes;
+
+    static if (is(T == void))
+    {
+        final void sendInputNodesRenderFinished()
+        {
+            foreach (i; 0 .. inputNodes.length)
+            {
+                inputNodes[i].renderFinished(inputNodes[i], &this);
+            }
+        }
+        final passfail tryAddInputNode(MidiInputNode!void* inputNode)
+        {
+            if (inputNodes.tryPut(inputNode).failed)
+                return passfail.fail;
+
+            return passfail.pass;
+        }
+    }
 }
 
-/**
-BUG
-The program won't compile unless I leave the following import in.
-Even though this import is not used at all, when I remove it I get these errors:
-    D:\git\mar\src\mar\array.d(326): Error: variable `mar.array.StaticArray!(NoteState, 128u).StaticArray.opIndex.this` inout variables can only be declared inside inout functions
-    D:\git\audio\audiolib\audio\midi\package.d(307): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(311): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
-    D:\git\mar\src\mar\array.d(331): Error: size of type MemoryResult is not known
-    D:\git\mar\src\mar\array.d(331): Error: size of type MemoryResult is not known
-    D:\git\mar\src\mar\array.d(334): Error: forward reference to type MemoryResult
-    D:\git\mar\src\mar\array.d(337): Error: forward reference to type MemoryResult
-    D:\git\audio\audiolib\audio\midi\package.d(313): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member tryPut is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(287): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
-    D:\git\mar\src\mar\array.d(327): Error: forward reference to type T[]
-    D:\git\audio\audiolib\audio\midi\package.d(288): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member data is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(323): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member removeAt is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(324): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d-mixin-326(326): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(297): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d-mixin-337(337): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(338): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member removeAt is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(339): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d-mixin-341(341): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member opIndex is not accessible
-    D:\git\audio\audiolib\audio\midi\package.d(333): Error: struct `mar.array.StaticArray!(NoteState, 128u).StaticArray` member length is not accessible
-*/
-import audio.windowsmidi : WindowsMidiInputDevice;
+// A node that inputs midi notes
+struct MidiInputNode(T)
+{
+    // MidiInput nodes may or may not want to know all the instruments that are
+    // going to request events from them.
+    //void function(T* context, void* instrument) connectInstrument;
+
+    MidiEvent[] function(T* context, MidiInstrument!void* instrument) getMidiEvents;
+
+    // This let's the midi input node that it can now clean up all it's events.
+    // This function must be called after each buffer is done being rendered.
+    void function(T* context, MidiInstrument!void* instrument) renderFinished;
+}
+
 struct MidiInputNodeTemplate(InputDevice)
 {
     import mar.arraybuilder : ArrayBuilder;
-    import audio.render : RenderState;
     import audio.midi : MidiNote, MidiNoteMap;
 
-    mixin InheritBaseTemplate!RootRenderNode;
-    private ArrayBuilder!(MidiInstrument!void*) instruments;
+    //mixin InheritBaseTemplate!RootRenderNode;
+    mixin InheritBaseTemplate!MidiInputNode;
     //bool[MidiNote.max + 1] onMap;
     ArrayBuilder!MidiEvent midiEvents;
     InputDevice inputDevice;
 
     final void initialize()
     {
-        this.base.renderNextBuffer = &renderNextBuffer;
-    }
-
-    final passfail tryAddInstrument(MidiInstrument!void* instrument)
-    {
-        if (instruments.tryPut(instrument).failed)
-            return passfail.fail;
-        // Forward the current state
-        /*
-        foreach (note; 0 .. onMap.length)
-        {
-            if (onMap[note])
-                instrument.midiEvent(instrument, cast(MidiNote)note, true);
-        }
-        */
-        return passfail.pass;
+        this.base.getMidiEvents = &getMidiEvents;
+        this.base.renderFinished = &renderFinished;
     }
 
     // returns: false if it was already on
@@ -180,15 +123,18 @@ struct MidiInputNodeTemplate(InputDevice)
         enterRenderCriticalSection();
         scope (exit) exitRenderCriticalSection();
         // TODO: make sure it is in order by timestamp
-        return midiEvents.tryPut(event);
+        const result = midiEvents.tryPut(event);
+        return result;
+        //return midiEvents.tryPut(event);
     }
 
-    static void renderNextBuffer(typeof(this)/*!InputDevice*/* me, ubyte[] channels, void* renderBuffer, const void* limit)
+    static MidiEvent[] getMidiEvents(typeof(this)* me, MidiInstrument!void* instrument)
     {
-        foreach (instrument; me.instruments.data)
-        {
-            instrument.renderNextBuffer(instrument, channels, renderBuffer, limit, me.midiEvents.data);
-        }
+        //if (me.midiEvents.data.length > 0) logDebug("returning ", me.midiEvents.length, " midi events");
+        return me.midiEvents.data;
+    }
+    static void renderFinished(typeof(this)* me, MidiInstrument!void* instrument)
+    {
         me.midiEvents.shrinkTo(0);
     }
     //
@@ -255,8 +201,6 @@ struct NoteStateBase
     MidiNote note; // save so we can easily remove the note from the MidiNoteMap
     NoteControlState controlState;
 }
-
-
 
 struct OscillatorInstrumentData
 {
@@ -346,6 +290,8 @@ struct SamplerInstrumentData
 
     MidiControlledSample[][] velocitySortedSamplesByNote;
     float volumeScale;
+    // should I support this?  or maybe even a function?
+    //float midiVelocityScale;
     ubyte channelCount;
     this(MidiControlledSample[][] velocitySortedSamplesByNote, float volumeScale, byte channelCount)
     in { assert(velocitySortedSamplesByNote.length == MidiNote.max + 1); } do
@@ -571,7 +517,6 @@ in { assert(increment > 0); } do
 struct MidiInstrumentTypeA(Renderer)
 {
     import audio.midi : MidiNote, MidiNoteMap;
-    import audio.render : RenderState;
 
     mixin InheritBaseTemplate!MidiInstrument;
 
@@ -581,7 +526,11 @@ struct MidiInstrumentTypeA(Renderer)
 
     void initialize(Renderer.InstrumentData instrumentData)
     {
-        this.base.renderNextBuffer = &renderNextBuffer;
+        this.base.base.mix = &mix;
+        this.base.base.connectOutputNode = &connectOutputNode;
+        this.base.base.disconnectOutputNode = &disconnectOutputNode;
+        this.base.base.renderFinished = &renderFinished;
+
         this.notes.initialize();
         this.instrumentData = instrumentData;
     }
@@ -593,9 +542,42 @@ struct MidiInstrumentTypeA(Renderer)
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    static void renderNextBuffer(typeof(this)* me, ubyte[] channels, void* buffer, const void* limit, MidiEvent[] midiEvents)
+    static passfail connectOutputNode(typeof(this)* me, void* outputNode)
     {
-        // update notes
+        logDebug(typeof(this).stringof, " connectOutputNode ", outputNode);
+        return passfail.pass;
+    }
+    static passfail disconnectOutputNode(typeof(this)* me, void* outputNode)
+    {
+        logDebug(typeof(this).stringof, " disconnectOutputNode ", outputNode);
+        return passfail.pass;
+    }
+    static void renderFinished(typeof(this)* me, void* outputNode)
+    {
+        //logDebug(typeof(this).stringof, " renderFinished ", outputNode);
+        me.asBase.sendInputNodesRenderFinished();
+    }
+
+    private static void mix(typeof(this)* me, ubyte[] channels, void* buffer, const void* limit)
+    {
+        foreach (i; 0 .. me.base.inputNodes.length)
+        {
+            auto events = me.base.inputNodes[i].getMidiEvents(me.base.inputNodes[i], me.asBase);
+            if (events.length > 0)
+            handleMidiEvents(me, events);
+        }
+        render(me, channels, buffer, limit);
+    }
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // TODO: this function is probably too large to be in a template
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    private static void handleMidiEvents(typeof(this)* me, MidiEvent[] midiEvents)
+    {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // TODO: don't ignore timestamps
@@ -652,7 +634,16 @@ struct MidiInstrumentTypeA(Renderer)
                 assert(0, "codebug");
             }
         }
-        
+    }
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // TODO: this function is probably too large to be in a template
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    private static void render(typeof(this)* me, ubyte[] channels, void* buffer, const void* limit)
+    {
         // TODO: maybe the buffer loop should be the outer one?
         //       maybe loop through each cache line, then through each note?
         for (size_t noteIndex = 0; noteIndex < me.notes.length; noteIndex++)
@@ -715,4 +706,3 @@ struct MidiInstrumentTypeA(Renderer)
         }
     }
 }
-

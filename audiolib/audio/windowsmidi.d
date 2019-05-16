@@ -3,7 +3,8 @@ module audio.windowsmidi;
 import mar.passfail;
 
 import audio.log;
-import audio.dag : MidiEvent, MidiInputNodeTemplate;
+import audio.dag : MidiInputNodeTemplate;
+import audio.midi : MidiEvent;
 
 alias WindowsMidiInputNode = MidiInputNodeTemplate!WindowsMidiInputDevice;
 struct WindowsMidiInputDevice

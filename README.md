@@ -16,10 +16,10 @@ An array of sample points or samples frames that represent one or more sound wav
 
 # TODO
 
-* redo the render system, start with the output and work backwards.
-  allow short-circuiting
+* finish render channel/mix system, allow short-circuiting
+* allow audio generators to set or mix
+* when a note sustained note is reattacked at a lower velocity, the sustained note is still there...I should test this behavior on a regular piano
 * use something other than waveout for windows
-* change render to not be global?
 * load instrument from json file
 * make sure none of the samples start with a buffer of silence
   maybe the program should detect and warn/fix this?

@@ -7,19 +7,8 @@ import mar.math : sin;
 import audio.log;
 static import audio.global;
 import audio.renderformat;
-import audio.dag : RootRenderNode;
+import audio.dag : AudioGenerator;
 import backend = audio.backend;
-
-enum TWO_PI = 3.14159265358979 * 2;
-
-enum RenderState
-{
-    off,
-    attack,
-    sustain,
-    delay,
-    release,
-}
 
 struct Global
 {
@@ -29,11 +18,11 @@ struct Global
         import mar.windows.types : SRWLock;
         SRWLock lock;
     }
-    ArrayBuilder!(RootRenderNode!void*) rootRenderNodes;
     //
-    // The generators directly connected to the audio backend
+    // The generators connected directly to the audio backend
     //
-    //ArrayBuilder!(AudioGenerator!void*) rootGenerators;
+    ArrayBuilder!(AudioGenerator!void*) rootAudioGenerators;
+    void* backendOutputNode; // just leave as null for now
 }
 __gshared Global global;
 
@@ -68,22 +57,31 @@ final void exitRenderCriticalSection()
     }
 }
 
-void addRootRenderNode(T)(RootRenderNode!T* renderer)
+auto addRootAudioGenerator(T)(AudioGenerator!T* generator)
 {
-    addRootRenderNode(cast(RootRenderNode!void*)renderer);
+    return addRootRenderNode(cast(AudioGenerator!void*)generator);
 }
-void addRootRenderNode(RootRenderNode!void* renderer)
+passfail addRootRenderNode(AudioGenerator!void* generator)
 {
-    import mar.mem : realloc;
+    import audio.errors;
+
+    if (generator.connectOutputNode(generator, global.backendOutputNode).failed)
+    {
+        // error already logged
+        return passfail.fail;
+    }
     enterRenderCriticalSection();
     scope (exit) exitRenderCriticalSection();
-    auto result = global.rootRenderNodes.tryPut(renderer);
+    auto result = global.rootAudioGenerators.tryPut(generator);
     if (result.failed)
     {
-        logError("failed to add renderer: ", result);
-        assert(0);
+        logError("failed to add audio generator: ", result);
+        if (generator.disconnectOutputNode(generator, global.backendOutputNode).failed)
+            setUnrecoverable("failed to disconnect main output node from an audio generator");
+
+        return passfail.fail;
     }
-    //printf("Added a renderer (there are now %d renderers)\n", currentRendererCount);
+    return passfail.pass;
 }
 
 mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
@@ -185,14 +183,25 @@ passfail renderLoop(ubyte[] channels, void* renderBuffer, const void* renderLimi
 void render(ubyte[] channels, void* buffer, const void* limit)
 {
     import mar.mem : zero;
+    //
+    // TODO: if there are any generators that have a "set" function, then I
+    //       could use that first and skip zeroing memory
+    //
     zero(buffer, limit - buffer);
+
     enterRenderCriticalSection();
     scope (exit) exitRenderCriticalSection();
 
     //logDebug("render");
-    for (size_t i = 0; i < global.rootRenderNodes.length; i++)
+    for (size_t i = 0; i < global.rootAudioGenerators.length; i++)
     {
-        auto node = global.rootRenderNodes[i];
-        node.renderNextBuffer(node, channels, buffer, limit);
+        auto generator = global.rootAudioGenerators[i];
+        generator.mix(generator, channels, buffer, limit);
+    }
+    // Notify each node that the render is finished
+    for (size_t i = 0; i < global.rootAudioGenerators.length; i++)
+    {
+        auto generator = global.rootAudioGenerators[i];
+        generator.renderFinished(generator, global.backendOutputNode);
     }
 }

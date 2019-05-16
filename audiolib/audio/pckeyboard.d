@@ -5,8 +5,8 @@ import mar.passfail;
 
 import audio.log;
 import audio.renderformat;
-import audio.dag : MidiEvent, MidiInputNodeTemplate;
-import audio.midi : MidiNote;
+import audio.dag : MidiInputNodeTemplate;
+import audio.midi : MidiNote, MidiEvent;
 
 alias PCKeyboardInputNode = MidiInputNodeTemplate!PCKeyboardMidiInputDevice;
 struct PCKeyboardMidiInputDevice

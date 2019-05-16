@@ -56,7 +56,9 @@ extern (C) int main(string[] args)
     //const inputDelayMillis = 20;
     const inputDelayMillis = 30;
     //const inputDelayMillis = 100;
-    if(audio.backend.setAudioFormatAndBufferConfig(audio.global.sampleFramesPerSec / inputDelayMillis).failed)
+    const bufferSampleFrameSize = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
+    log("bufferSampleFrameSize=", bufferSampleFrameSize, " inputDelay=", inputDelayMillis, " ms");
+    if(audio.backend.setAudioFormatAndBufferConfig(bufferSampleFrameSize).failed)
     {
         // error already logged
         return 1;
@@ -70,80 +72,70 @@ extern (C) int main(string[] args)
 version = GrandPiano;
 
 version = UseMidiInstrument;
-//version = UsePCKeyboard;
+version = UsePCKeyboard;
 int go()
 {
-    version (Windows)
-        import mar.windows.kernel32 : CreateThread;
-
+    import mar.arraybuilder;
     import audio.dag;
     import backend = audio.backend;
 
-    version (UsePCKeyboard)
-    {
-        auto pcKeyboardInput = from!"audio.pckeyboard".PCKeyboardInputNode();
-        pcKeyboardInput.initialize();
-    }
-    version (UseMidiInstrument)
-    {
-        auto midiInput = from!"audio.windowsmidi".WindowsMidiInputNode();
-        midiInput.initialize();
-    }
+    ArrayBuilder!(MidiInstrument!void*) instruments;
     version (SinWave)
     {
         auto sinWave = SinOscillatorMidiInstrument();
-        sinWave.initialize(OscillatorInstrumentData(.1));
-        version (UsePCKeyboard)
-            pcKeyboardInput.tryAddInstrument(sinWave.asBase).enforce();
-        version (UseMidiInstrument)
-            midiInput.tryAddInstrument(sinWave.asBase).enforce();
+        sinWave.initialize(OscillatorInstrumentData(.4));
+        addRootAudioGenerator(sinWave.asBase.asBase).enforce();
+        instruments.tryPut(sinWave.asBase).enforce();
     }
     version (SawWave)
     {
         auto sawWave = SawOscillatorMidiInstrument();
         sawWave.initialize(OscillatorInstrumentData(.1));
-        version (UsePCKeyboard)
-            pcKeyboardInput.tryAddInstrument(sawWave.asBase).enforce();
-        version (UseMidiInstrument)
-            midiInput.tryAddInstrument(sawWave.asBase).enforce();
+        addRootAudioGenerator(sawWave.asBase.asBase).enforce();
+        instruments.tryPut(sawWave.asBase).enforce();
     }
     version (GrandPiano)
     {
         SamplerMidiInstrument grandPiano;
-        if (loadGrandPiano(&grandPiano).failed)
+        if (loadGrandPiano(&grandPiano, 3.0).failed)
             return 1; // fail
-        version (UsePCKeyboard)
-            pcKeyboardInput.tryAddInstrument(grandPiano.asBase).enforce();
-        version (UseMidiInstrument)
-            midiInput.tryAddInstrument(grandPiano.asBase).enforce();
+        addRootAudioGenerator(grandPiano.asBase.asBase).enforce();
+        instruments.tryPut(grandPiano.asBase).enforce();
     }
 
     version (UsePCKeyboard)
     {
+        auto pcKeyboardInput = from!"audio.pckeyboard".PCKeyboardInputNode();
+        pcKeyboardInput.initialize();
+        foreach (i; 0 .. instruments.length)
+        {
+            instruments[i].tryAddInputNode(pcKeyboardInput.asBase)
+                .enforce("failed to add pc keyboard midi input mode");
+        }
         pcKeyboardInput.startMidiDeviceInput().enforce();
-        addRootRenderNode(pcKeyboardInput.asBase);
     }
     version (UseMidiInstrument)
     {
+        auto midiInput = from!"audio.windowsmidi".WindowsMidiInputNode();
+        midiInput.initialize();
+        foreach (i; 0 .. instruments.length)
+        {
+            instruments[i].tryAddInputNode(midiInput.asBase)
+                .enforce("failed to add midi device input node");
+        }
         midiInput.startMidiDeviceInput(0).enforce(); // just hardcode MIDI device 0 for now
-        addRootRenderNode(midiInput.asBase);
     }
 
     backend.open();
-    import audio.render : renderThread;
-    version (Windows)
+
     {
-        auto audioWriteThread = CreateThread(null,
-            0,
-            &renderThread,
-            null,
-            0,
-            null);
-        if (audioWriteThread.isNull)
+        import mar.thread;
+        import audio.render : renderThread;
+        const result = startThread(&renderThread);
+        if (result.failed)
         {
-            import mar.windows.kernel32 : GetLastError;
-            logError("CreateThread failed, e=", GetLastError());
-            return 1;
+            logError("failed to start audio thread: ", result);
+            return 1; // fail
         }
     }
 
@@ -173,7 +165,7 @@ struct SampleRange
 }
 
 version = UseMPSamples;
-passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument)
+passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument, float volumeScale)
 {
     import mar.enforce : enforce;
     import mar.array : zero, StaticArray, StaticImmutableArray, fixedArrayBuilder, tryMallocArray;
@@ -281,6 +273,6 @@ passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument)
             " channels but the output only has ", audio.global.channelCount);
         return passfail.fail;
     }
-    instrument.initialize(SamplerInstrumentData(samplesByNote, 2.0, sharedChannelCount));
+    instrument.initialize(SamplerInstrumentData(samplesByNote, volumeScale, sharedChannelCount));
     return passfail.pass;
 }
