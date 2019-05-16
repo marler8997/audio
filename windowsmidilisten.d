@@ -1,7 +1,7 @@
 module audio.windowsmidi;
 
 import mar.passfail;
-import mar.windows.types : Handle, LOBYTE, HIBYTE, LOWORD, HIWORD;
+import mar.windows : Handle, LOBYTE, HIBYTE, LOWORD, HIWORD;
 import mar.windows.winmm;
 
 import audio.log;

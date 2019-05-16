@@ -15,7 +15,7 @@ struct WindowsMidiInputDevice
                     uint* param1, uint* param2)
     {
         import mar.print : formatHex;
-        import mar.windows.types : LOBYTE, HIBYTE, LOWORD, HIWORD;
+        import mar.windows : LOBYTE, HIBYTE, LOWORD, HIWORD;
 
         import audio.midi : MidiNote, MidiMsgCategory, MidiControlCode;
 

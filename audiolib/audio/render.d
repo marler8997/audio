@@ -15,7 +15,7 @@ struct Global
     import mar.arraybuilder : ArrayBuilder;
     version (Windows)
     {
-        import mar.windows.types : SRWLock;
+        import mar.windows : SRWLock;
         SRWLock lock;
     }
     //
@@ -97,7 +97,7 @@ mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
     */
     /*
     {
-        import mar.windows.types : ThreadPriority;
+        import mar.windows : ThreadPriority;
         import mar.windows.kernel32 : GetCurrentThread, GetThreadPriority, SetThreadPriority;
         const thread = GetCurrentThread();
         const priority = GetThreadPriority(thread);

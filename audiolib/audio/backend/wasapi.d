@@ -5,7 +5,7 @@ import mar.passfail;
 import mar.mem : zero;
 import mar.c : cstring;
 
-import mar.windows.types : Handle, INFINITE, InputRecord, ConsoleFlag;
+import mar.windows : Handle, INFINITE, InputRecord, ConsoleFlag;
 import mar.windows.kernel32 :
     GetLastError, GetCurrentThreadId,
     CreateEventA, SetEvent, ResetEvent,
@@ -38,6 +38,11 @@ private __gshared GlobalData global;
 
 passfail open()
 {
+    {
+        //const result = CoCreateInstance(
+    }
+
+
     logError("wasapi open not implemented");
     return passfail.fail;
     /*
@@ -78,7 +83,7 @@ passfail writeBuffer(void* renderBuffer)
     return passfail.fail;
     /+
     import mar.mem : memcpy;
-    import mar.windows.types : INFINITE;
+    import mar.windows : INFINITE;
     import mar.windows.kernel32 : GetLastError, WaitForSingleObject;
 
     static import audio.global;

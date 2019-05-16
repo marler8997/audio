@@ -64,7 +64,7 @@ struct PCKeyboardMidiInputDevice
 
     version (Windows)
     {
-        import mar.windows.types : KeyEventRecord;
+        import mar.windows : KeyEventRecord;
         static void keyHandler(PCKeyboardInputNode* node, KeyEventRecord* keyEvent)
         {
             // TODO: get Timestamp
@@ -151,7 +151,7 @@ passfail installKeyNoteHandlers(PCKeyboardInputNode* node)
 
 struct KeyHandler(T)
 {
-    import mar.windows.types : KeyEventRecord;
+    import mar.windows : KeyEventRecord;
     bool down; // stop multiple down events
     private T* context;
     private void function(T*, KeyEventRecord*) handler;
@@ -181,7 +181,7 @@ struct Global
 {
     version (Windows)
     {
-        import mar.windows.types : Handle, SRWLock;
+        import mar.windows : Handle, SRWLock;
         SRWLock lock;
         Handle inputThread;
     }
@@ -239,7 +239,7 @@ passfail joinInputThread()
 {
     version (Windows)
     {
-        import mar.windows.types : Handle, INFINITE;
+        import mar.windows : Handle, INFINITE;
     }
 
     Handle threadHandleCopy;
@@ -268,7 +268,7 @@ passfail joinInputThread()
 mixin from!"mar.thread".threadEntryMixin!("inputThreadEntry", q{
     import mar.print : formatHex;
     import mar.stdio : stdin;
-    import mar.windows.types : ConsoleFlag, EventType, InputRecord;
+    import mar.windows : ConsoleFlag, EventType, InputRecord;
     import mar.windows.kernel32 :
         GetLastError,
         GetConsoleMode, SetConsoleMode, ReadConsoleInputA;
