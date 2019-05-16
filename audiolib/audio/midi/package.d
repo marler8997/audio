@@ -126,6 +126,8 @@ enum MidiNote : ubyte
     //gsharp9 = 127,
 }
 
+alias defaultFreq = stdFreq;
+//alias defaultFreq = justC4Freq;
 __gshared immutable float[256] stdFreq = [
      0               :    8.18,
      1               :    8.66,

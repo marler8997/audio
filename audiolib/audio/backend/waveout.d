@@ -46,7 +46,7 @@ struct GlobalData
     {
         CustomWaveHeader *backBuffer;
     }
-    uint bufferSampleCount;
+    uint bufferSampleFramesCount;
     uint playBufferSize;
 }
 private __gshared GlobalData global;
@@ -78,7 +78,7 @@ passfail close()
     return passfail.pass;
 }
 
-auto bufferSampleCount() { pragma(inline, true); return global.bufferSampleCount; }
+auto bufferSampleFramesCount() { pragma(inline, true); return global.bufferSampleFramesCount; }
 
 /**
 Writes the given renderBuffer to the audio backend.
@@ -86,19 +86,21 @@ Also blocks until the next buffer needs to be rendered.
 This blocking characterstic is what keeps the render thread from spinning.
 */
 version (UseBackBuffer)
-passfail writeBuffer(Format)(void* renderBuffer)
+passfail writeBuffer(void* renderBuffer)
 {
     import mar.mem : memcpy;
     import mar.windows.types : INFINITE;
     import mar.windows.kernel32 : GetLastError, WaitForSingleObject;
+
     static import audio.global;
+    import audio.renderformat;
 
     // TODO: figure out which functions are taking the longest
     //now.update();
 
     // Since we are using the same format as Render format, no need to convert
     memcpy(global.backBuffer.base.data, renderBuffer,
-        bufferSampleCount * audio.global.channelCount * Format.SampleType.sizeof);
+        bufferSampleFramesCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof);
     /*
     if (audio.global.channelCount == 1)
     {
@@ -107,7 +109,7 @@ passfail writeBuffer(Format)(void* renderBuffer)
     }
     else if (audio.global.channelCount == 2)
     {
-        Format.monoToStereo(cast(uint*)global.backBuffer.base.data, cast(ushort*)renderBuffer, global.bufferSampleCount);
+        Format.monoToStereo(cast(uint*)global.backBuffer.base.data, cast(ushort*)renderBuffer, global.bufferSampleFramesCount);
     }
     else
     {
@@ -186,7 +188,7 @@ passfail platformInit()
 // TODO: define a function to get the AudioFormat string (platform dependent?)
 
 // 0 = success
-passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
+passfail setAudioFormatAndBufferConfig(uint bufferSampleFramesCount)
 {
     import mar.mem;
     static import audio.global;
@@ -203,14 +205,14 @@ passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
         global.audioFormatID = WaveFormatTag.float_;
     else static assert("waveout does not support this render format");
 
-    global.waveFormat.format.samplesPerSec  = audio.global.samplesPerSec;
+    global.waveFormat.format.samplesPerSec  = audio.global.sampleFramesPerSec;
 
-    global.waveFormat.format.bitsPerSample  = RenderFormat.SampleType.sizeof * 8;
-    global.waveFormat.format.blockAlign     = cast(ushort)(RenderFormat.SampleType.sizeof * audio.global.channelCount);
+    global.waveFormat.format.bitsPerSample  = RenderFormat.SamplePoint.sizeof * 8;
+    global.waveFormat.format.blockAlign     = cast(ushort)(RenderFormat.SamplePoint.sizeof * audio.global.channelCount);
 
     global.waveFormat.format.channelCount   = audio.global.channelCount;
 
-    global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * audio.global.samplesPerSec;
+    global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * audio.global.sampleFramesPerSec;
 
     if(global.audioFormatID == WaveFormatTag.pcm)
     {
@@ -221,7 +223,7 @@ passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
     {
         global.waveFormat.format.tag         = WaveFormatTag.extensible;
         global.waveFormat.format.extraSize   = 22; // Size of extra info
-        global.waveFormat.validBitsPerSample = RenderFormat.SampleType.sizeof * 8;
+        global.waveFormat.validBitsPerSample = RenderFormat.SamplePoint.sizeof * 8;
         if (audio.global.channelCount == 1)
             global.waveFormat.channelMask    = ChannelFlags.frontCenter;
         else if (audio.global.channelCount == 2)
@@ -240,8 +242,8 @@ passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
     }
 
     // Setup Buffers
-    global.bufferSampleCount = bufferSampleCount;
-    global.playBufferSize = bufferSampleCount * global.waveFormat.format.blockAlign;
+    global.bufferSampleFramesCount = bufferSampleFramesCount;
+    global.playBufferSize = bufferSampleFramesCount * global.waveFormat.format.blockAlign;
     foreach (i; 0 .. PlayBufferCount)
     {
         if (global.waveHeaders[i].base.data)

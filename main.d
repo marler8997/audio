@@ -24,9 +24,9 @@ extern (C) int main(string[] args)
 
     //audio.global.channelCount = 1;
     audio.global.channelCount = 2;
-    //audio.global.samplesPerSec = 44100;
-    audio.global.samplesPerSec = 48000;
-    logDebug(audio.global.channelCount, " channels at ", audio.global.samplesPerSec, " Hz");
+    //audio.global.sampleFramesPerSec = 44100;
+    audio.global.sampleFramesPerSec = 48000;
+    logDebug(audio.global.channelCount, " channels at ", audio.global.sampleFramesPerSec, " Hz");
 
     {
         import mar.sentinel : lit;
@@ -56,7 +56,7 @@ extern (C) int main(string[] args)
     //const inputDelayMillis = 20;
     const inputDelayMillis = 30;
     //const inputDelayMillis = 100;
-    if(audio.backend.setAudioFormatAndBufferConfig(audio.global.samplesPerSec / inputDelayMillis).failed)
+    if(audio.backend.setAudioFormatAndBufferConfig(audio.global.sampleFramesPerSec / inputDelayMillis).failed)
     {
         // error already logged
         return 1;
@@ -91,7 +91,7 @@ int go()
     }
     version (SinWave)
     {
-        auto sinWave = SinOscillatorMidiInstrument!RenderFormat();
+        auto sinWave = SinOscillatorMidiInstrument();
         sinWave.initialize(OscillatorInstrumentData(.1));
         version (UsePCKeyboard)
             pcKeyboardInput.tryAddInstrument(sinWave.asBase).enforce();
@@ -100,7 +100,7 @@ int go()
     }
     version (SawWave)
     {
-        auto sawWave = SawOscillatorMidiInstrument!RenderFormat();
+        auto sawWave = SawOscillatorMidiInstrument();
         sawWave.initialize(OscillatorInstrumentData(.1));
         version (UsePCKeyboard)
             pcKeyboardInput.tryAddInstrument(sawWave.asBase).enforce();
@@ -110,10 +110,8 @@ int go()
     version (GrandPiano)
     {
         SamplerMidiInstrument grandPiano;
-        if (loadGrandPiano(&grandPiano, from!"audio.midi".stdFreq).failed)
+        if (loadGrandPiano(&grandPiano).failed)
             return 1; // fail
-        //if (loadGrandPiano(&grandPiano, from!"audio.midi".justC4Freq).failed)
-        //    return 1; // fail
         version (UsePCKeyboard)
             pcKeyboardInput.tryAddInstrument(grandPiano.asBase).enforce();
         version (UseMidiInstrument)
@@ -175,13 +173,13 @@ struct SampleRange
 }
 
 version = UseMPSamples;
-passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument, const(float)[256] freqTable)
+passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument)
 {
     import mar.enforce : enforce;
     import mar.array : zero, StaticArray, StaticImmutableArray, fixedArrayBuilder, tryMallocArray;
     import mar.mem : malloc, free;
-    import audio.dag : MidiControlledSample, SampleInstrumentData;
-    import audio.midi : MidiNote, stdFreq;
+    import audio.dag : MidiControlledSample, SamplerInstrumentData;
+    import audio.midi : MidiNote, defaultFreq, stdFreq;
 
     // Can't use an array literal because of -betterC
     const ranges = fixedArrayBuilder!(SampleRange, 21)
@@ -261,18 +259,18 @@ passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument, cons
         auto rangeLength = ranges[i + 1].startNote - range.startNote;
         foreach (note; range.startNote .. ranges[i + 1].startNote + 1)
         {
-            const skew = (note == range.sampleNote && freqTable.ptr == stdFreq.ptr) ? float.nan :
-                freqTable[note] / stdFreq[range.sampleNote];
+            const skew = (note == range.sampleNote && defaultFreq.ptr == stdFreq.ptr) ? float.nan :
+                defaultFreq[note] / stdFreq[range.sampleNote];
             version (UseMPSamples)
             {
                 auto velocitySortedSamples = tryMallocArray!MidiControlledSample(2).enforce;
-                velocitySortedSamples[0] = MidiControlledSample(softSampleResult.val.array, skew, 72);
-                velocitySortedSamples[1] = MidiControlledSample(mediumSampleResult.val.array, skew, 0);
+                velocitySortedSamples[0] = MidiControlledSample(softSampleResult.val.points, skew, 72);
+                velocitySortedSamples[1] = MidiControlledSample(mediumSampleResult.val.points, skew, 0);
             }
             else
             {
                 auto velocitySortedSamples = tryMallocArray!MidiControlledSample(1).enforce;
-                velocitySortedSamples[0] = MidiControlledSample(mediumSampleResult.val.array, skew, 0);
+                velocitySortedSamples[0] = MidiControlledSample(mediumSampleResult.val.points, skew, 0);
             }
             samplesByNote[note] = velocitySortedSamples;
         }
@@ -283,6 +281,6 @@ passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument, cons
             " channels but the output only has ", audio.global.channelCount);
         return passfail.fail;
     }
-    instrument.initialize(SampleInstrumentData(samplesByNote, 2.0, sharedChannelCount));
+    instrument.initialize(SamplerInstrumentData(samplesByNote, 2.0, sharedChannelCount));
     return passfail.pass;
 }

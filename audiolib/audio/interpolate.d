@@ -10,37 +10,37 @@ import audio.renderformat;
 
 struct DropSample
 {
-    static RenderFormat.SampleType interpolate(const(RenderFormat.SampleType)[] samples, size_t s0Index)
+    static RenderFormat.SamplePoint interpolate(const(RenderFormat.SamplePoint)[] points, size_t pointsOffset)
     {
-        return samples[s0Index];
+        return points[pointsOffset];
     }
 }
 
 struct Linear
 {
-    static RenderFormat.SampleType interpolate(const(RenderFormat.SampleType)[] samples,
-        size_t s0Index, float time, ubyte channelCount)
+    static RenderFormat.SamplePoint interpolate(const(RenderFormat.SamplePoint)[] points,
+        size_t pointsOffset, float time, ubyte channelCount)
     {
-        const s0 = samples[s0Index + channelCount];
-        const s1 = (s0Index + 2*channelCount < samples.length) ?
-            samples[s0Index + 2*channelCount] : s0;
-        return s0 + (s1 - s0) * time;
+        const p0 = points[pointsOffset + channelCount];
+        const p1 = (pointsOffset + 2*channelCount < points.length) ?
+            points[pointsOffset + 2*channelCount] : p0;
+        return p0 + (p1 - p0) * time;
     }
 }
 
 struct Parabolic
 {
-    static RenderFormat.SampleType interpolate(const(RenderFormat.SampleType)[] samples,
-        size_t s0Index, float time, ubyte channelCount)
+    static RenderFormat.SamplePoint interpolate(const(RenderFormat.SamplePoint)[] points,
+        size_t pointsOffset, float time, ubyte channelCount)
     {
-        const s0 = samples[s0Index];
-        auto s1 = (s0Index + channelCount < samples.length) ?
-            samples[s0Index + channelCount] : s0;
-        auto s2 = (s0Index + 2*channelCount < samples.length) ?
-            samples[s0Index + 2*channelCount] : s1;
-        return s0 + time / 2.0 * (
-            -3*s0 + 4*s1 - s2 + time * (
-                s0 - 2 * s1 + s2
+        const p0 = points[pointsOffset];
+        auto p1 = (pointsOffset + channelCount < points.length) ?
+            points[pointsOffset + channelCount] : p0;
+        auto p2 = (pointsOffset + 2*channelCount < points.length) ?
+            points[pointsOffset + 2*channelCount] : p1;
+        return p0 + time / 2.0 * (
+            -3*p0 + 4*p1 - p2 + time * (
+                p0 - 2 * p1 + p2
             )
         );
     }
@@ -48,26 +48,26 @@ struct Parabolic
 
 struct OlliOptimal6po5o
 {
-    static RenderFormat.SampleType interpolate(const(RenderFormat.SampleType)[] samples,
-        size_t s0Index, float time, ubyte channelCount)
+    static RenderFormat.SamplePoint interpolate(const(RenderFormat.SamplePoint)[] points,
+        size_t pointsOffset, float time, ubyte channelCount)
     {
-        const s0 = samples[s0Index];
-        const s1 = (s0Index + channelCount < samples.length) ?
-            samples[s0Index + channelCount] : s0;
-        const s2 = (s0Index + 2*channelCount < samples.length) ?
-            samples[s0Index + 2*channelCount] : s1;
+        const p0 = points[pointsOffset];
+        const p1 = (pointsOffset + channelCount < points.length) ?
+            points[pointsOffset + channelCount] : p0;
+        const p2 = (pointsOffset + 2*channelCount < points.length) ?
+            points[pointsOffset + 2*channelCount] : p1;
 
-        const sneg1 = (s0Index >= channelCount) ?
-            samples[s0Index - channelCount] : s0;
-        const sneg2 = (s0Index >= 2*channelCount) ?
-            samples[s0Index - 2*channelCount] : sneg1;
-        const sneg3 = (s0Index >= 3*channelCount) ?
-            samples[s0Index - 3*channelCount] : sneg2;
+        const pneg1 = (pointsOffset >= channelCount) ?
+            points[pointsOffset - channelCount] : p0;
+        const pneg2 = (pointsOffset >= 2*channelCount) ?
+            points[pointsOffset - 2*channelCount] : pneg1;
+        const pneg3 = (pointsOffset >= 3*channelCount) ?
+            points[pointsOffset - 3*channelCount] : pneg2;
 
         const z = time - 1/2.0;
-        const even1 = s0+sneg1, odd1 = s0-sneg1;
-        const even2 = s1+sneg2, odd2 = s1-sneg2;
-        const even3 = s2+sneg3, odd3 = s2-sneg3;
+        const even1 = p0+pneg1, odd1 = p0-pneg1;
+        const even2 = p1+pneg2, odd2 = p1-pneg2;
+        const even3 = p2+pneg3, odd3 = p2-pneg3;
         const c0 = even1*0.40513396007145713 + even2*0.09251794438424393
         + even3*0.00234806603570670;
         const c1 = odd1*0.28342806338906690 + odd2*0.21703277024054901

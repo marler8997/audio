@@ -8,7 +8,7 @@ enum SampleKind { int_, float_ }
 
 struct Pcm16Format
 {
-    alias SampleType = short;
+    alias SamplePoint = short;
     enum MaxAmplitude = short.max;
     static ref short getSampleRef(void* block)
     {
@@ -26,14 +26,14 @@ struct Pcm16Format
             dst[i] = cast(uint)src[i] << 16 | src[i];
         }
     }
-    static SampleType keepAboveZero(SampleType value)
+    static SamplePoint keepAboveZero(SamplePoint value)
     {
         return (value <= 0) ? 1 : value;
     }
 }
 struct FloatFormat
 {
-    alias SampleType = float;
+    alias SamplePoint = float;
     enum MaxAmplitude = 1.0f;
     static ref float getSampleRef(void* block)
     {
@@ -52,17 +52,17 @@ struct FloatFormat
             dst[2*i+1] = src[i];
         }
     }
-    static SampleType keepAboveZero(SampleType value)
+    static SamplePoint keepAboveZero(SamplePoint value)
     {
         return (value <= 0.0) ? 0.000000001 : value;
     }
-    static passfail copyConvert(float* dst, void* src, SampleKind kind, uint samplesPerSec, size_t sampleCount, ubyte channelCount, ubyte sampleSize)
+    static passfail copyConvert(float* dst, void* src, SampleKind kind, uint sampleFramesPerSec, size_t sampleCount, ubyte channelCount, ubyte sampleSize)
     {
         static import audio.global;
-        if (samplesPerSec != audio.global.samplesPerSec)
+        if (sampleFramesPerSec != audio.global.sampleFramesPerSec)
         {
-            logError("Converting between frequencies ", samplesPerSec, " to ",
-                audio.global.samplesPerSec, " is not implemented");
+            logError("Converting between frequencies ", sampleFramesPerSec, " to ",
+                audio.global.sampleFramesPerSec, " is not implemented");
             return passfail.fail;
         }
         foreach (i; 0 .. sampleCount)

@@ -6,11 +6,11 @@ import audio.log;
 
 // don't know what the linux audio api is yet, this
 // is just a stub for now
-auto bufferSampleCount() { return global.bufferSampleCount; }
+auto bufferSampleFramesCount() { return global.bufferSampleFramesCount; }
 
 struct Global
 {
-    uint bufferSampleCount;
+    uint bufferSampleFramesCount;
 }
 __gshared Global global;
 
@@ -18,13 +18,13 @@ passfail platformInit() { return passfail.pass; }
 void open() { }
 void close() { }
 
-passfail setAudioFormatAndBufferConfig(uint bufferSampleCount)
+passfail setAudioFormatAndBufferConfig(uint bufferSampleFramesCount)
 {
-    global.bufferSampleCount = bufferSampleCount;
+    global.bufferSampleFramesCount = bufferSampleFramesCount;
     return passfail.pass;
 }
 
-passfail writeBuffer(Format)(void* renderBuffer)
+passfail writeBuffer(void* renderBuffer)
 {
     // stub
     logError("writeBuffer not implemented in linux");

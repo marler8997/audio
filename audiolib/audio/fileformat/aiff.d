@@ -47,7 +47,7 @@ mixin ExpectMixin!("ParseAiffResult", void
 // An audio sample that has already been converted to the native render format
 struct Sample
 {
-    RenderFormat.SampleType[] array;
+    RenderFormat.SamplePoint[] points;
     ubyte channelCount;
 }
 mixin ExpectMixin!("LoadAiffResult", Sample
@@ -255,7 +255,7 @@ auto loadAiffSample(cstring filename)
     auto totalSampleCount = aiffFile.numSampleFrames * aiffFile.numChannels;
     //log("rawSize=", rawSoundData.length, " decompressedSize=", decompressed.length,
     //    " convertedSize=", convertedSize);
-    auto converted = tryMallocArray!(RenderFormat.SampleType)(totalSampleCount);
+    auto converted = tryMallocArray!(RenderFormat.SamplePoint)(totalSampleCount);
     if (converted is null)
         return LoadAiffResult.staticError("out of memory");
     // Is all AIFF just PCM?

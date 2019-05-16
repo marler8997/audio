@@ -87,6 +87,9 @@ void addRootRenderNode(RootRenderNode!void* renderer)
 }
 
 mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
+    import mar.mem : malloc, free;
+    import mar.thread : ThreadEntryResult;
+
     /*
     // Set priority
     if(!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
@@ -112,55 +115,49 @@ mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
         }
     }
     */
-    renderLoop!RenderFormat(backend.bufferSampleCount);
-    return 0;
-});
 
-passfail renderLoop(Format)(uint bufferSampleCount)
-{
-    import mar.mem : malloc, free;
-
-    const renderBufferSize = bufferSampleCount * audio.global.channelCount * Format.SampleType.sizeof;
+    const renderBufferSize = backend.bufferSampleFramesCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof;
     //logDebug("renderBufferSize ", renderBufferSize);
     auto renderBuffer = malloc(renderBufferSize);
     if(renderBuffer == null)
     {
         logError("malloc failed");
-        return passfail.fail;
+        return ThreadEntryResult.fail;
     }
     ubyte* channels = cast(ubyte*)malloc(ubyte.sizeof * audio.global.channelCount);
     if(channels == null)
     {
         logError("malloc failed");
-        return passfail.fail;
+        return ThreadEntryResult.fail;
     }
     foreach (ubyte i; 0 .. audio.global.channelCount)
     {
         channels[i] = i;
     }
-    const result = renderLoop!Format(channels[0 .. audio.global.channelCount],
+    const result = renderLoop(channels[0 .. audio.global.channelCount],
         renderBuffer, renderBuffer + renderBufferSize);
     free(renderBuffer);
-    return result;
-}
+    return result.failed ? ThreadEntryResult.fail : ThreadEntryResult.pass;
+});
 
 
 //version = AddDefaultRenderer;
 //version = DebugDumpRender;
-passfail renderLoop(Format)(ubyte[] channels, void* renderBuffer, const void* renderLimit)
+passfail renderLoop(ubyte[] channels, void* renderBuffer, const void* renderLimit)
 {
     while(true)
     {
         //logDebug("Rendering buffer ", bufferIndex);
         //renderStartTick.update();
-        //version (DebugDumpRender)
         version (AddDefaultRenderer)
         {
+            import audio.dag : SinOscillatorMidiInstrument;
+
             static bool added = false;
-            static SinOscillator o;
+            static SinOscillatorMidiInstrument sinOscillator;
             if (!added)
             {
-                o.init!Format(backend.samplesPerSec, 261.63, .2);
+                sinOscillator.initialize(audio.global.sampleFramesPerSec, 261.63, .2);
                 addRenderer(&o.base);
                 added = true;
             }
@@ -170,14 +167,14 @@ passfail renderLoop(Format)(ubyte[] channels, void* renderBuffer, const void* re
 
         version (DebugDumpRender)
         {
-            for (auto p = cast(Format.SampleType*)renderBuffer; p < renderLimit; p++)
+            for (auto p = cast(RenderFormat.SamplePoint*)renderBuffer; p < renderLimit; p++)
             {
                 logDebug(p[0]);
             }
             import mar.process : exit;
             exit(1);
         }
-        if (backend.writeBuffer!Format(renderBuffer).failed)
+        if (backend.writeBuffer(renderBuffer).failed)
         {
             // error already logged
             return passfail.fail;
