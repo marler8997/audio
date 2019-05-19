@@ -1,67 +1,277 @@
 module audio.backend.wasapi;
 
+import mar.from;
 import mar.passfail;
-/*
-import mar.mem : zero;
 import mar.c : cstring;
+import mar.windows : Handle;
+import mar.windows.kernel32 : GetLastError, CloseHandle, CreateEventA;
+import mar.windows.coreaudio : IAudioClient, IAudioRenderClient;
 
-import mar.windows : Handle, INFINITE, InputRecord, ConsoleFlag;
-import mar.windows.kernel32 :
-    GetLastError, GetCurrentThreadId,
-    CreateEventA, SetEvent, ResetEvent,
-    QueryPerformanceFrequency, QueryPerformanceCounter,
-    WaitForSingleObject;
-import mar.windows.winmm;
-import mar.windows.waveout :
-    WaveFormatTag, WaveoutHandle, WaveFormatEx, ChannelFlags, KSDataFormat,
-    WaveFormatExtensible, WaveHeader, WaveOutputMessage;
-*/
 import audio.log;
-
+static import audio.global;
+import audio.renderformat;
 
 struct GlobalData
 {
-    /*
-    WaveoutHandle waveOut;
-    AudioFormat audioFormatID;
-    WaveFormatExtensible waveFormat;
-    CustomWaveHeader[PlayBufferCount] waveHeaders;
-    CustomWaveHeader *frontBuffer;
-    version (UseBackBuffer)
-    {
-        CustomWaveHeader *backBuffer;
-    }
-    */
-    //uint playBufferSize;
+    IAudioClient* audioClient;
+    Handle bufferReadyEvent;
+    IAudioRenderClient* renderClient;
 }
 private __gshared GlobalData global;
 
-passfail open()
+
+//
+// We preform some steps here because they may affect global parameters
+// such as bufferSampleFrameCount and sampleFramesPerSec
+passfail setup()
 {
+    import mar.windows : ClsCtx;
+    import mar.windows.winmm.nolink :
+        WaveFormatTag, WaveFormatEx, WaveFormatExtensible, KSDataFormat;
+    import mar.windows.ole32.nolink : CoInit;
+    import mar.windows.ole32 :  CoInitializeEx, CoCreateInstance, CoTaskMemFree;
+    import mar.windows.coreaudio : DataFlow, Role,
+        IMMDeviceEnumerator, MMDeviceEnumerator, IMMDevice,
+        AudioClientShareMode, AudioClientStreamFlags;
+
+    import audio.backend.waveout : dumpWaveFormat;
+
+    IMMDeviceEnumerator* enumerator;
+    IMMDevice* device;
+    WaveFormatEx* format;
     {
-        //const result = CoCreateInstance(
+        // Note: I think DRUNTIME may be calling CoInitialize sometimes.
+        // If so then I need to figure out how to match druntime.
+        const result = CoInitializeEx(null, CoInit.apartmentThreaded);
+        //const result = CoInitializeEx(null, CoInit.multiThreaded);
+        if (result.failed)
+        {
+            logError("CoInitializeEx failed, result=", result);
+            goto LcoInitializeFailed;
+        }
     }
 
-
-    logError("wasapi open not implemented");
-    return passfail.fail;
-    /*
-    const result = waveOutOpen(&global.waveOut,
-        WAVE_MAPPER,
-        &global.waveFormat.format,
-        cast(void*)&waveOutCallback,
-        null,
-        MuitlmediaOpenFlags.callbackFunction);
-    if(result.failed)
     {
-        //printf("waveOutOpen failed (result=%d '%s')\n", result, getMMRESULTString(result));
-        logError("waveOutOpen failed, result=", result);
-        return passfail.fail;
+        const result = CoCreateInstance(
+            &MMDeviceEnumerator.id,
+            null,
+            ClsCtx.all,
+            &IMMDeviceEnumerator.id,
+            cast(void**)&enumerator);
+        if (result.failed)
+        {
+            logError("CoCreateInstance for MMDeviceEnumerator failed, hresult=", result);
+            goto LcoCreateInstanceFailed;
+        }
     }
+    logDebug("calling getDefaultAudioEndpoint...");
+    {
+        const result = enumerator.getDefaultAudioEndpoint(
+            DataFlow.render, Role.console, &device);
+        if (result.failed)
+        {
+            // TODO: clean up IMMDeviceEnumerator
+            logError("MMDeviceEnumerator.getDefaultAudioEndpoint failed, hresult=", result);
+            goto LgetDefaultAudioEndpointFailed;
+        }
+    }
+    logDebug("device=", cast(void*)device);
+    {
+        const result = device.activate(&IAudioClient.id, ClsCtx.all, null, cast(void**)&global.audioClient);
+        if (result.failed)
+        {
+            // TODO: clean up IMMDeviceEnumerator and IMMDevice
+            logError("IMMDevice.activate failed, hresult=", result);
+            goto LdeviceActivateFailed;
+        }
+    }
+    {
+        const result = global.audioClient.getMixFormat(&format);
+        if (result.failed)
+        {
+            // TODO: clean up IMMDeviceEnumerator and IMMDevice
+            logError("IAudioClient.getMixFormat failed, hresult=", result);
+            goto LgetMixFormatFailed;
+        }
+    }
+    dumpWaveFormat(format);
+
+
+    if (format.samplesPerSec != audio.global.sampleFramesPerSec)
+    {
+        log("OVERRIDE: sampleFramesPerSec (", audio.global.sampleFramesPerSec,
+            ") does not match, setting to ", format.samplesPerSec);
+        audio.global.sampleFramesPerSec = format.samplesPerSec;
+    }
+    if (format.channelCount != audio.global.channelCount)
+    {
+        logError("backend channel count different from global, not implemented, global=",
+            audio.global.channelCount, " backend=", format.channelCount);
+        log("the backend should probably allow the channel count to be modified");
+        goto LunsupportedWaveFormat;
+    }
+    {
+        const globalBlockAlign = audio.global.channelCount * RenderFormat.SamplePoint.sizeof;
+        if (format.blockAlign != globalBlockAlign)
+        {
+            logError("backend blockAlign different from global, not implemented, global=",
+                globalBlockAlign, " backend=", format.blockAlign);
+            goto LunsupportedWaveFormat;
+        }
+    }
+
+    if (format.tag == WaveFormatTag.extensible)
+    {
+        auto formatExtensible = cast(WaveFormatExtensible*)format;
+        if (formatExtensible.subFormat != KSDataFormat.ieeeFloat)
+        {
+            logError("extensible format guid ", formatExtensible.subFormat, " is not supported");
+            goto LunsupportedWaveFormat;
+        }
+    }
+    else
+    {
+        // TODO: cleanup stuff
+        logError("unsupported WaveFormat tag ", format.tag);
+        goto LunsupportedWaveFormat;
+    }
+    //
+    // Set a compatible buffer size
+    //
+    // The way it is currently coded, audio.global.bufferSampleFrameCount cannot
+    // exceed the default Period.  This is because we wait to render the next buffer
+    // until the system signals the buffer is ready, however, it will only signal it
+    // is ready once the defaultPeriod amount of buffer is available.  So if we request
+    // a larger buffer, it will fail.  I could sleep some more, but rather than coding that,
+    // right now I just make sure our global buffer size isn't larger than the default period.
+    //
+    {
+        long defaultPeriod;
+        long minPeriod;
+        const result = global.audioClient.getDevicePeriod(&defaultPeriod, &minPeriod);
+        if (result.failed)
+        {
+            logError("audioClient.getDevicePeriod failed, result=", result);
+            goto LaudioClientGetDevicePeriodFailed;
+        }
+        const defaultBufferSampleFrameCount = defaultPeriod * audio.global.sampleFramesPerSec / 10000000;
+        const minBufferSampleFrameCount = minPeriod * audio.global.sampleFramesPerSec / 10000000;
+        log("DefaultPeriod=", defaultPeriod, " (100ns) or ", defaultPeriod / 10000, " ms or ",
+            defaultBufferSampleFrameCount, " sampleFrames");
+        log("MinPeriod=", minPeriod, " (100ns) or ", minPeriod / 10000, " ms or ",
+            minBufferSampleFrameCount, " sampleFrames");
+        if (audio.global.bufferSampleFrameCount == 0)
+        {
+            log("Setting bufferSampleFrameCount to ", cast(uint)defaultBufferSampleFrameCount);
+            audio.global.bufferSampleFrameCount = cast(uint)defaultBufferSampleFrameCount;
+        }
+        else if (audio.global.bufferSampleFrameCount > defaultBufferSampleFrameCount)
+        {
+            log("OVERRIDE: bufferSampleFrameCount (",
+                audio.global.bufferSampleFrameCount, ") is too big, setting to ",
+                defaultBufferSampleFrameCount);
+            audio.global.bufferSampleFrameCount = cast(uint)defaultBufferSampleFrameCount;
+        }
+        else if (audio.global.bufferSampleFrameCount < minBufferSampleFrameCount)
+        {
+            log("OVERRIDE: bufferSampleFrameCount (",
+                audio.global.bufferSampleFrameCount, ") is too small, setting to ",
+                minBufferSampleFrameCount);
+            audio.global.bufferSampleFrameCount = cast(uint)minBufferSampleFrameCount;
+        }
+    }
+
+    {
+        auto bufferDuration = cast(long)(
+            audio.global.bufferSampleFrameCount * 10000000.0 / audio.global.sampleFramesPerSec
+        );
+        logDebug("bufferDuration=", bufferDuration, " (100ns)");
+        const result = global.audioClient.initialize(
+            AudioClientShareMode.shared_,
+            //AudioClientStreamFlags.none,
+            AudioClientStreamFlags.eventCallback,
+            bufferDuration,
+            0,
+            format,
+            null);
+        if (result.failed)
+        {
+            logError("audioClient.initialize failed, result=", result);
+            goto LaudioClientInitializeFailed;
+        }
+    }
+    {
+        uint bufferSampleFrameCount;
+        const result = global.audioClient.getBufferSize(&bufferSampleFrameCount);
+        if (result.failed)
+        {
+            logError("audioClient.getBufferSize failed, result=", result);
+            goto LaudioClientGetBufferSizeFailed;
+        }
+        if (bufferSampleFrameCount < audio.global.bufferSampleFrameCount)
+        {
+            logError("backend bufferSampleCount is less than global, not implemented, global=",
+                audio.global.bufferSampleFrameCount, " backend=", bufferSampleFrameCount);
+            goto LaudioClientBufferSizeMismatch;
+        }
+    }
+    global.bufferReadyEvent = CreateEventA(null, 1, 0, cstring.nullValue);
+    if(global.bufferReadyEvent.isNull)
+    {
+        logError("CreateEventA failed, e=", GetLastError());
+        goto LcreateEventFailed;
+    }
+    {
+        const result = global.audioClient.setEventHandle(global.bufferReadyEvent);
+        if (result.failed)
+        {
+            logError("audioClient.setEventHandle failed, result=", result);
+            goto LaudioClientSetEventHandleFailed;
+        }
+    }
+    {
+        const result = global.audioClient.getService(&IAudioRenderClient.id, cast(void**)&global.renderClient);
+        if (result.failed)
+        {
+            logError("audioClient.getService failed, result=", result);
+            goto LaudioClientGetServiceFailed;
+        }
+    }
+
+    log("TODO: !!!!!!!!!!!!!!! What can I clean up now?????");
+    // enumerator.release(); ???
     return passfail.pass;
-    */
+    global.renderClient.release();
+    global.renderClient = null;
+LaudioClientGetServiceFailed:
+LbadPeriod:
+LaudioClientGetDevicePeriodFailed:
+LaudioClientSetEventHandleFailed:
+    CloseHandle(global.bufferReadyEvent);
+    global.bufferReadyEvent = Handle.nullValue;
+LcreateEventFailed:
+LaudioClientBufferSizeMismatch:
+LaudioClientGetBufferSizeFailed:
+LaudioClientInitializeFailed:
+LunsupportedWaveFormat:
+    CoTaskMemFree(format);
+LgetMixFormatFailed:
+    global.audioClient.release();
+    global.audioClient = null;
+LdeviceActivateFailed:
+    device.release();
+LgetDefaultAudioEndpointFailed:
+    enumerator.release();
+LcoCreateInstanceFailed:
+LcoInitializeFailed:
+    return passfail.fail;
 }
-passfail close()
+
+passfail startingRenderLoop()
+{
+    return passfail.pass;
+}
+passfail stoppingRenderLoop()
 {
     logError("wasapi close not implemented");
     return passfail.fail;
@@ -72,29 +282,24 @@ passfail close()
     */
 }
 
-/**
-Writes the given renderBuffer to the audio backend.
-Also blocks until the next buffer needs to be rendered.
-This blocking characterstic is what keeps the render thread from spinning.
-*/
-passfail writeBuffer(void* renderBuffer)
+private passfail sendBuffer(void* renderBuffer, bool start)
 {
-    logError("wasapi writeBuffer not implemented");
-    return passfail.fail;
-    /+
     import mar.mem : memcpy;
     import mar.windows : INFINITE;
-    import mar.windows.kernel32 : GetLastError, WaitForSingleObject;
+    import mar.windows.kernel32 : GetLastError, ResetEvent, WaitForSingleObject;
 
-    static import audio.global;
-    import audio.renderformat;
-
-    // TODO: figure out which functions are taking the longest
-    //now.update();
-
+    void* backendBuffer;
+    {
+        const result = global.renderClient.getBuffer(audio.global.bufferSampleFrameCount, &backendBuffer);
+        if (result.failed)
+        {
+            logError("audioRenderClient.getBuffer failed, result=", result);
+            return passfail.fail;
+        }
+    }
     // Since we are using the same format as Render format, no need to convert
-    memcpy(global.backBuffer.base.data, renderBuffer,
-        bufferSampleFrameCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof);
+    memcpy(backendBuffer, renderBuffer,
+        audio.global.bufferSampleFrameCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof);
     /*
     if (audio.global.channelCount == 1)
     {
@@ -111,141 +316,92 @@ passfail writeBuffer(void* renderBuffer)
         return passfail.fail;
     }
     */
-    // TODO: is prepare necessary each time with no backbuffer?
-    {
-        const result = waveOutPrepareHeader(global.waveOut, &global.backBuffer.base, WaveHeader.sizeof);
-        if (result.failed)
-        {
-            logError("waveOutPrepareHeader failed, result=", result);
-            return passfail.fail;
-        }
-    }
-    if(ResetEvent(global.backBuffer.freeEvent).failed)
+    if(ResetEvent(global.bufferReadyEvent).failed)
     {
         logError("ResetEvent failed, e=", GetLastError());
         return passfail.fail;
     }
     {
-        const result = waveOutWrite(global.waveOut, &global.backBuffer.base, WaveHeader.sizeof);
+        const result = global.renderClient.releaseBuffer(audio.global.bufferSampleFrameCount, 0);
         if (result.failed)
         {
-            logError("waveOutWrite failed, result=", result);
+            // TODO: cleanup?
+            logError("audioRenderClient.releaseBuffer failed, result=", result);
             return passfail.fail;
         }
     }
-
-    // Wait for the front buffer, this delays the next render so it doesn't happen
-    // too soon.
+    if (start)
+    {
+        const result = global.audioClient.start();
+        if (result.failed)
+        {
+            // TODO: cleanup?
+            logError("audioRenderClient.start failed, result=", result);
+            return passfail.fail;
+        }
+    }
     {
         //logDebug("waiting for play buffer...");
-        const result = WaitForSingleObject(global.frontBuffer.freeEvent, INFINITE);
+        const result = WaitForSingleObject(global.bufferReadyEvent, INFINITE);
         if (result != 0)
         {
             logError("Expected WaitForSingleObject to return 0 but got ", result, ", e=", GetLastError());
             return passfail.fail;
         }
     }
-    // TODO: is unprepare necessary with no backbuffer?
     {
-        const result = waveOutUnprepareHeader(global.waveOut, &global.frontBuffer.base, WaveHeader.sizeof);
+        uint sampleFramePadding;
+        const result = global.audioClient.getCurrentPadding(&sampleFramePadding);
         if (result.failed)
         {
-            logError("waveOutUnprepareHeader failed, result=", result);
+            logError("audioRenderClient.getCurrentPadding failed, result=", result);
             return passfail.fail;
         }
+        //log("SampleFramePadding=", sampleFramePadding);
     }
-    auto temp = global.frontBuffer;
-    global.frontBuffer = global.backBuffer;
-    global.backBuffer = temp;
-    +/
+    return passfail.pass;
 }
 
-// TODO: define a function to get the AudioFormat string (platform dependent?)
 
-// 0 = success
-passfail setAudioFormatAndBufferConfig(uint bufferSampleFrameCount)
+passfail writeFirstBuffer(void* renderBuffer)
 {
-    logError("wasapi setAudioFormatAndBufferConfig not impl");
-    return passfail.fail;
-    /*
-    import mar.mem;
-    static import audio.global;
-    import audio.renderformat;
-    import audio.renderformat.options : Pcm16Format, FloatFormat;
+    return sendBuffer(renderBuffer, true);
+}
 
-    //
-    // Setup audio format
-    //
-    // For now just match the render format so we don't have to convert
-    static if (is(RenderFormat == Pcm16Format))
-        global.audioFormatID = WaveFormatTag.pcm;
-    else static if (is(RenderFormat == FloatFormat))
-        global.audioFormatID = WaveFormatTag.float_;
-    else static assert("waveout does not support this render format");
+/**
+Writes the given renderBuffer to the audio backend.
+Also blocks until the next buffer needs to be rendered.
+This blocking characterstic is what keeps the render thread from spinning.
 
-    global.waveFormat.format.samplesPerSec  = audio.global.sampleFramesPerSec;
-
-    global.waveFormat.format.bitsPerSample  = RenderFormat.SamplePoint.sizeof * 8;
-    global.waveFormat.format.blockAlign     = cast(ushort)(RenderFormat.SamplePoint.sizeof * audio.global.channelCount);
-
-    global.waveFormat.format.channelCount   = audio.global.channelCount;
-
-    global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * audio.global.sampleFramesPerSec;
-
-    if(global.audioFormatID == WaveFormatTag.pcm)
+TODO: Read the "Remarks" section from:
+    https://docs.microsoft.com/en-us/windows/desktop/api/audioclient/nf-audioclient-iaudioclient-initialize
+*/
+passfail writeBuffer(void* renderBuffer)
+{
+    return sendBuffer(renderBuffer, false);
+    /+
+    // Sleep for how long?
+    uint sampleFramePadding;
     {
-        global.waveFormat.format.tag        = WaveFormatTag.pcm;
-        global.waveFormat.format.extraSize  = 0; // Size of extra info
-    }
-    else if(global.audioFormatID == WaveFormatTag.float_)
-    {
-        global.waveFormat.format.tag         = WaveFormatTag.extensible;
-        global.waveFormat.format.extraSize   = 22; // Size of extra info
-        global.waveFormat.validBitsPerSample = RenderFormat.SamplePoint.sizeof * 8;
-        if (audio.global.channelCount == 1)
-            global.waveFormat.channelMask    = ChannelFlags.frontCenter;
-        else if (audio.global.channelCount == 2)
-            global.waveFormat.channelMask    = ChannelFlags.frontLeft | ChannelFlags.frontRight;
-        else
+        const result = global.audioClient.getCurrentPadding(&sampleFramePadding);
+        if (result.failed)
         {
-            logError("waveout channel count ", audio.global.channelCount, " not implemented");
+            logError("audioRenderClient.getCurrentPadding failed, result=", result);
             return passfail.fail;
         }
-        global.waveFormat.subFormat          = KSDataFormat.ieeeFloat;
     }
-    else
+    log("SampleFramePadding=", sampleFramePadding);
+    if (sampleFramePadding < audio.global.bufferSampleFrameCount)
     {
-        logError("Unsupported format", global.audioFormatID);
+        logError("NOT IMPLEMENTED: sampleFramePadding=", sampleFramePadding,
+            " < bufferSampleFrameCount=", audio.global.bufferSampleFrameCount);
         return passfail.fail;
     }
-
-    // Setup Buffers
-    global.bufferSampleFrameCount = bufferSampleFrameCount;
-    global.playBufferSize = bufferSampleFrameCount * global.waveFormat.format.blockAlign;
-    foreach (i; 0 .. PlayBufferCount)
     {
-        if (global.waveHeaders[i].base.data)
-            free(global.waveHeaders[i].base.data);
-        global.waveHeaders[i].base.bufferLength = global.playBufferSize;
-        global.waveHeaders[i].base.data = malloc(global.playBufferSize);
-        if(global.waveHeaders[i].base.data == null)
-        {
-            logError("malloc failed");
-            return passfail.fail;
-        }
-        global.waveHeaders[i].freeEvent = CreateEventA(null, 1, 1, cstring.nullValue);
-        if(global.waveHeaders[i].freeEvent.isNull)
-        {
-            logError("CreateEvent failed");
-            return passfail.fail;
-        }
+        const result = renderClient.getBuffer(audio.global.bufferSampleFrameCount,
+            &global.buffer);
     }
-    global.frontBuffer = &global.waveHeaders[0];
-    version (UseBackBuffer)
-    {
-        global.backBuffer = &global.waveHeaders[1];
-    }
-
-    return passfail.pass;
-    */
+    logError("wasapi.writeBuffer not fully implemented");
+    return passfail.fail;
+    +/
 }

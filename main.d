@@ -9,26 +9,40 @@ static import audio.backend;
 import audio.renderformat;
 import audio.render;
 
-void setupGlobalSettings()
+void setupGlobalDefaults()
 {
     //audio.global.channelCount = 1;
     audio.global.channelCount = 2;
     //audio.global.sampleFramesPerSec = 44100;
     audio.global.sampleFramesPerSec = 48000;
-    logDebug(audio.global.channelCount, " channels at ", audio.global.sampleFramesPerSec, " Hz");
+    logDebug("default set to ", audio.global.channelCount, " channels at ", audio.global.sampleFramesPerSec, " Hz");
 
-    //const inputDelayMillis = 10;
-    //const inputDelayMillis = 20;
-    const inputDelayMillis = 30;
-    //const inputDelayMillis = 100;
-    audio.global.bufferSampleFrameCount = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
-    log("bufferSampleFrameCount=", audio.global.bufferSampleFrameCount, " inputDelay=", inputDelayMillis, " ms");
+    audio.global.bufferSampleFrameCount = 0; // set to 0 to mean it's not set yet
 
     version (Windows)
     {
-        audio.global.backend = audio.backend.AudioBackend.waveout;
-        //audio.global.backend = audio.backend.AudioBackend.wasapi;
+        //audio.global.backend = audio.backend.AudioBackend.waveout;
+        audio.global.backend = audio.backend.AudioBackend.wasapi;
     }
+}
+// After backend has been setup, finishing setting globals if backend did not set them
+void finishGlobals()
+{
+    if (audio.global.bufferSampleFrameCount != 0)
+    {
+        log("audio backend set a buffer size for us to ", audio.global.bufferSampleFrameCount);
+        return;
+    }
+    log("audio backend did not set a buffer size");
+    //const inputDelayMillis = 2;
+    //const inputDelayMillis = 9;
+    //const inputDelayMillis = 10;
+    //const inputDelayMillis = 20;
+    //const inputDelayMillis = 30;
+    const inputDelayMillis = 50;
+    //const inputDelayMillis = 100;
+    audio.global.bufferSampleFrameCount = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
+    log("bufferSampleFrameCount=", audio.global.bufferSampleFrameCount, " inputDelay=", inputDelayMillis, " ms");
 }
 
 extern (C) int main(string[] args)
@@ -40,7 +54,10 @@ extern (C) int main(string[] args)
     renderPlatformInit().enforce();
     from!"audio.pckeyboard".pckeyboardInit().enforce();
 
-    setupGlobalSettings();
+    setupGlobalDefaults();
+    // Now setup the backend, it may change some global settings
+    audio.backend.setup().enforce("failed to setup the audio backend");
+    finishGlobals();
 
     {
         import mar.sentinel : lit;
@@ -69,6 +86,8 @@ version = GrandPiano;
 
 version = UseMidiInstrument;
 version = UsePCKeyboard;
+//version = PCKeyboardStartWithC4;
+
 int go()
 {
     import mar.arraybuilder;
@@ -108,6 +127,16 @@ int go()
                 .enforce("failed to add pc keyboard midi input mode");
         }
         pcKeyboardInput.startMidiDeviceInput().enforce();
+        version (PCKeyboardStartWithC4)
+        {
+            import audio.midi : MidiEvent, MidiNote;
+            const addEventResult = pcKeyboardInput.tryAddMidiEvent(MidiEvent.makeNoteOn(0, MidiNote.c4, 67));
+            if (addEventResult.failed)
+            {
+                logError("failed to add MIDI ON event: ", addEventResult);
+                return 1; // fail
+            }
+        }
     }
     version (UseMidiInstrument)
     {
@@ -120,8 +149,6 @@ int go()
         }
         midiInput.startMidiDeviceInput(0).enforce(); // just hardcode MIDI device 0 for now
     }
-
-    audio.backend.open().enforce();
 
     {
         import mar.thread;
@@ -143,7 +170,6 @@ int go()
         joinInputThread();
     }
 
-    audio.backend.close();
     version (UseMidiInstrument)
         midiInput.stopMidiDeviceInput();
     return 0;

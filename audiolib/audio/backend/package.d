@@ -13,21 +13,45 @@ version (Windows)
     }
     static import audio.backend.waveout;
     static import audio.backend.wasapi;
-    passfail open()
+    //
+    // Perform any setup that could change global parameters
+    //
+    passfail setup()
     {
         switch (audio.global.backend)
         {
-            case AudioBackend.waveout: return audio.backend.waveout.open();
-            case AudioBackend.wasapi: return audio.backend.wasapi.open();
+            case AudioBackend.waveout: return audio.backend.waveout.setup();
+            case AudioBackend.wasapi: return audio.backend.wasapi.setup();
             default: assert(0);
         }
     }
-    passfail close()
+    //
+    // About to render the first buffer
+    //
+    passfail startingRenderLoop()
     {
         switch (audio.global.backend)
         {
-            case AudioBackend.waveout: return audio.backend.waveout.close();
-            case AudioBackend.wasapi: return audio.backend.wasapi.close();
+            case AudioBackend.waveout: return audio.backend.waveout.startingRenderLoop();
+            case AudioBackend.wasapi: return audio.backend.wasapi.startingRenderLoop();
+            default: assert(0);
+        }
+    }
+    passfail stoppingRenderLoop()
+    {
+        switch (audio.global.backend)
+        {
+            case AudioBackend.waveout: return audio.backend.waveout.stoppingRenderLoop();
+            case AudioBackend.wasapi: return audio.backend.wasapi.stoppingRenderLoop();
+            default: assert(0);
+        }
+    }
+    passfail writeFirstBuffer(void* renderBuffer)
+    {
+        switch (audio.global.backend)
+        {
+            case AudioBackend.waveout: return audio.backend.waveout.writeFirstBuffer(renderBuffer);
+            case AudioBackend.wasapi: return audio.backend.wasapi.writeFirstBuffer(renderBuffer);
             default: assert(0);
         }
     }
@@ -47,7 +71,7 @@ else
     {
         placeholder,
     }
-    passfail open()
+    passfail setup()
     {
         switch (audio.global.backend)
         {
@@ -55,7 +79,23 @@ else
             default: assert(0);
         }
     }
-    passfail close()
+    passfail startingRenderLoop()
+    {
+        switch (audio.global.backend)
+        {
+            case AudioBackend.placeholder: logError("no backend for non-windows implemented"); return passfail.fail;
+            default: assert(0);
+        }
+    }
+    passfail stoppingRenderLoop()
+    {
+        switch (audio.global.backend)
+        {
+            case AudioBackend.placeholder: logError("no backend for non-windows implemented"); return passfail.fail;
+            default: assert(0);
+        }
+    }
+    passfail writeFirstBuffer(void* renderBuffer)
     {
         switch (audio.global.backend)
         {

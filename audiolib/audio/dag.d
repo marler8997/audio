@@ -41,7 +41,8 @@ struct AudioGenerator(T)
     // NOTE: this tree structure is probably not very cache friendly.
     //       mabye there's a way to flatten out the memory for the render node tree?
 
-    void function(T* context, ubyte[] channels, void* renderBuffer, const void* limit) mix;
+    void function(T* context, ubyte[] channels, RenderFormat.SamplePoint* buffer,
+        const RenderFormat.SamplePoint* limit) mix;
 
     // Some generators may need to know how many output nodes are connected
     passfail function(T* context, void* outputNode) connectOutputNode;
@@ -243,6 +244,12 @@ struct SinOscillatorMidiInstrumentTypeA
             state.phase -= TWO_PI;
     }
 }
+
+private float sawFrequencyToIncrement(float frequency)
+{
+    return frequency / audio.global.sampleFramesPerSec;
+}
+
 alias SawOscillatorMidiInstrument = MidiInstrumentTypeA!SawOscillatorMidiInstrumentTypeA;
 struct SawOscillatorMidiInstrumentTypeA
 {
@@ -258,7 +265,7 @@ struct SawOscillatorMidiInstrumentTypeA
     static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
         state.nextSamplePoint = 0;
-        state.increment = defaultFreq[event.noteOn.note] / audio.global.sampleFramesPerSec;
+        state.increment = sawFrequencyToIncrement(defaultFreq[event.noteOn.note]);
     }
     static void reattackNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     {
@@ -268,8 +275,10 @@ struct SawOscillatorMidiInstrumentTypeA
     {
         pragma(inline, true);
 
-        addToEachChannel(channels, buffer, cast(RenderFormat.SamplePoint)(
-            state.base.currentVolume * state.nextSamplePoint * instrument.volumeScale * RenderFormat.MaxAmplitude));
+        const point = cast(RenderFormat.SamplePoint)(
+            state.base.currentVolume * state.nextSamplePoint * instrument.volumeScale * RenderFormat.MaxAmplitude);
+        //log(point);
+        addToEachChannel(channels, buffer, point);
 
         state.nextSamplePoint += state.increment;
         if (state.nextSamplePoint >= 1.0)
@@ -558,7 +567,8 @@ struct MidiInstrumentTypeA(Renderer)
         me.asBase.sendInputNodesRenderFinished();
     }
 
-    private static void mix(typeof(this)* me, ubyte[] channels, void* buffer, const void* limit)
+    private static void mix(typeof(this)* me, ubyte[] channels, RenderFormat.SamplePoint* buffer,
+        const RenderFormat.SamplePoint* limit)
     {
         foreach (i; 0 .. me.base.inputNodes.length)
         {
@@ -642,7 +652,8 @@ struct MidiInstrumentTypeA(Renderer)
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    private static void render(typeof(this)* me, ubyte[] channels, void* buffer, const void* limit)
+    private static void render(typeof(this)* me, ubyte[] channels, RenderFormat.SamplePoint* buffer,
+        const RenderFormat.SamplePoint* limit)
     {
         // TODO: maybe the buffer loop should be the outer one?
         //       maybe loop through each cache line, then through each note?
@@ -651,8 +662,7 @@ struct MidiInstrumentTypeA(Renderer)
             auto note = me.notes.asArray[noteIndex];
             bool removeNote = false;
             //log("Rendering note ", note.note);
-            for (auto next = buffer; next < limit;
-                next += (audio.global.channelCount * RenderFormat.SamplePoint.sizeof))
+            for (auto next = buffer; next < limit; next += audio.global.channelCount)
             {
                 // Adjust volume
                 switch (note.base.controlState)
@@ -686,7 +696,7 @@ struct MidiInstrumentTypeA(Renderer)
                     default: assert(0, "codebug");
                 }
 
-                Renderer.renderNote(me.instrumentData, &note, channels, cast(RenderFormat.SamplePoint*)next);
+                Renderer.renderNote(me.instrumentData, &note, channels, next);
             }
 
             if (removeNote)

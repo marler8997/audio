@@ -59,9 +59,10 @@ final void exitRenderCriticalSection()
 
 auto addRootAudioGenerator(T)(AudioGenerator!T* generator)
 {
-    return addRootRenderNode(cast(AudioGenerator!void*)generator);
+    auto result = addRootAudioGenerator(cast(AudioGenerator!void*)generator);
+    return result;
 }
-passfail addRootRenderNode(AudioGenerator!void* generator)
+passfail addRootAudioGenerator(AudioGenerator!void* generator)
 {
     import audio.errors;
 
@@ -114,7 +115,8 @@ mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
     }
     */
 
-    const renderBufferSize = audio.global.bufferSampleFrameCount * audio.global.channelCount * RenderFormat.SamplePoint.sizeof;
+    const renderBufferSize = audio.global.bufferSampleFrameCount *
+        audio.global.channelCount * RenderFormat.SamplePoint.sizeof;
     //logDebug("renderBufferSize ", renderBufferSize);
     auto renderBuffer = malloc(renderBufferSize);
     if(renderBuffer == null)
@@ -132,46 +134,40 @@ mixin from!"mar.thread".threadEntryMixin!("renderThread", q{
     {
         channels[i] = i;
     }
+    audio.backend.startingRenderLoop().enforce();
     const result = renderLoop(channels[0 .. audio.global.channelCount],
-        renderBuffer, renderBuffer + renderBufferSize);
+        cast(RenderFormat.SamplePoint*)renderBuffer,
+        cast(RenderFormat.SamplePoint*)(renderBuffer + renderBufferSize));
+    audio.backend.stoppingRenderLoop();
     free(renderBuffer);
     return result.failed ? ThreadEntryResult.fail : ThreadEntryResult.pass;
 });
 
 
-//version = AddDefaultRenderer;
 //version = DebugDumpRender;
-passfail renderLoop(ubyte[] channels, void* renderBuffer, const void* renderLimit)
+passfail renderLoop(ubyte[] channels, RenderFormat.SamplePoint* renderBuffer, const RenderFormat.SamplePoint* renderLimit)
 {
+    render(channels, renderBuffer, renderLimit);
+    version (DebugDumpRender)
+    {
+        for (auto p = renderBuffer; p < renderLimit; p += audio.global.channelCount)
+        {
+            // only log one channel right now
+            if (audio.global.channelCount == 1)
+                logDebug(p[0]);
+            if (audio.global.channelCount == 2)
+                logDebug(p[0], "    ", p[1]);
+        }
+        import mar.process : exit;
+        exit(1);
+    }
+    audio.backend.writeFirstBuffer(renderBuffer);
+
     while(true)
     {
         //logDebug("Rendering buffer ", bufferIndex);
         //renderStartTick.update();
-        version (AddDefaultRenderer)
-        {
-            import audio.dag : SinOscillatorMidiInstrument;
-
-            static bool added = false;
-            static SinOscillatorMidiInstrument sinOscillator;
-            if (!added)
-            {
-                sinOscillator.initialize(audio.global.sampleFramesPerSec, 261.63, .2);
-                addRenderer(&o.base);
-                added = true;
-            }
-        }
-
         render(channels, renderBuffer, renderLimit);
-
-        version (DebugDumpRender)
-        {
-            for (auto p = cast(RenderFormat.SamplePoint*)renderBuffer; p < renderLimit; p++)
-            {
-                logDebug(p[0]);
-            }
-            import mar.process : exit;
-            exit(1);
-        }
         if (audio.backend.writeBuffer(renderBuffer).failed)
         {
             // error already logged
@@ -180,14 +176,14 @@ passfail renderLoop(ubyte[] channels, void* renderBuffer, const void* renderLimi
     }
 }
 
-void render(ubyte[] channels, void* buffer, const void* limit)
+void render(ubyte[] channels, RenderFormat.SamplePoint* buffer, const RenderFormat.SamplePoint* limit)
 {
     import mar.mem : zero;
     //
     // TODO: if there are any generators that have a "set" function, then I
     //       could use that first and skip zeroing memory
     //
-    zero(buffer, limit - buffer);
+    zero(buffer, (limit - buffer) * buffer[0].sizeof);
 
     enterRenderCriticalSection();
     scope (exit) exitRenderCriticalSection();
