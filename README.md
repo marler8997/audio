@@ -16,11 +16,13 @@ An array of sample points or samples frames that represent one or more sound wav
 
 # TODO
 
+* implement graphics system
+* implement project format
 * finish render channel/mix system, allow short-circuiting
 * allow audio generators to set or mix
 * when a note sustained note is reattacked at a lower velocity, the sustained note is still there...I should test this behavior on a regular piano
 * use something other than waveout for windows
-* load instrument from json file
+* load project/instruments from JSON (or some form of json)
 * make sure none of the samples start with a buffer of silence
   maybe the program should detect and warn/fix this?
 * implement VST
