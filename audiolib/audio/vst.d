@@ -149,10 +149,10 @@ enum eff
     GetVu,            // called if (flags & (effFlagsHasClip | effFlagsHasVu))
 
     // system
-    enumSetSampleRate,    // in opt (float value in Hz; for example 44100.0Hz)
-    enumSetBlockSize,    // in value (this is the maximun size of an audio block,
+    setSampleRate,    // in opt (float value in Hz; for example 44100.0Hz)
+    setBlockSize,    // in value (this is the maximun size of an audio block,
                         // pls check sampleframes in process call)
-    enumMainsChanged,    // the user has switched the 'power on' button to
+    mainsChanged,    // the user has switched the 'power on' button to
                         // value (0 off, else on). This only switches audio
                         // processing; you should flush delay buffers etc.
 

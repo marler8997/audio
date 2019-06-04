@@ -4,55 +4,28 @@ import mar.from;
 import mar.passfail;
 
 import audio.log;
+import audio.inherits;
 import audio.renderformat;
 static import audio.global;
 import audio.midi : MidiNoteMapView, MidiEventType, MidiEvent;
-
-// TODO: move this?
-mixin template Inherit(T)
-{
-    T base;
-    static assert(base.offsetof == 0, "Inherit!(" ~ T.stringof ~ ") needs to be the first field with offset 0");
-    final inout(T)* asBase() inout { return cast(inout(T)*)&this; }
-}
-
-//
-// A "BaseTemplate" is a pattern where the base type is a template that takes a
-// type that will only be referenced as a pointer. This means that every template instance
-// should have the same binary implementation. So:
-//     BaseTemplate!void should be equivalent to any BaseTemplate!T
-//
-mixin template ForwardInheritBaseTemplate(alias Template, LeafType)
-{
-    // verify this is a valid BaseTemplate
-    static assert(Template!void.sizeof == Template!(LeafType).sizeof);
-
-    Template!LeafType base;
-    static assert(base.offsetof == 0, "InheritTemplateVoidBase!(" ~ T.stringof ~ ") needs to be the first field with offset 0");
-    final inout(Template!void)* asBase() inout { return cast(inout(Template!void)*)&this; }
-}
-mixin template InheritBaseTemplate(alias Template)
-{
-    mixin ForwardInheritBaseTemplate!(Template, typeof(this));
-}
 
 struct AudioGenerator(T)
 {
     // NOTE: this tree structure is probably not very cache friendly.
     //       mabye there's a way to flatten out the memory for the render node tree?
 
-    void function(T* context, ubyte[] channels, RenderFormat.SamplePoint* buffer,
+    void function(T* me, ubyte[] channels, RenderFormat.SamplePoint* buffer,
         const RenderFormat.SamplePoint* limit) mix;
 
     // Some generators may need to know how many output nodes are connected
-    passfail function(T* context, void* outputNode) connectOutputNode;
+    passfail function(T* me, void* outputNode) connectOutputNode;
     // Some generators may need to know how many output nodes are connected
-    passfail function(T* context, void* outputNode) disconnectOutputNode;
+    passfail function(T* me, void* outputNode) disconnectOutputNode;
 
     // This let's the audio generator that is can clean up any state for this frame.
     // This function must be called after each buffer is done being rendered.
     // This function may be called more than once before the next mix/set call.
-    void function(T* context, void* outputNode) renderFinished;
+    void function(T* me, void* outputNode) renderFinished;
 }
 
 // A node that inputs midi notes
@@ -104,7 +77,6 @@ struct MidiInputNodeTemplate(InputDevice)
     import mar.arraybuilder : ArrayBuilder;
     import audio.midi : MidiNote, MidiNoteMap;
 
-    //mixin InheritBaseTemplate!RootRenderNode;
     mixin InheritBaseTemplate!MidiInputNode;
     //bool[MidiNote.max + 1] onMap;
     ArrayBuilder!MidiEvent midiEvents;

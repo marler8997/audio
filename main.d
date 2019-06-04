@@ -59,53 +59,41 @@ extern (C) int main(string[] args)
     audio.backend.setup().enforce("failed to setup the audio backend");
     finishGlobals();
 
-    {
-        import mar.sentinel : lit;
-        import audio.vst : AudioOpcode, AEffect, loadPlugin;
-
-        static extern (C) uint vstHostCallback(AEffect *effect,
-            AudioOpcode opcode, uint index, uint value, void *ptr, float opt)
-        {
-            import audio.vst;
-            logDebug("vstHostCallback opcode=", opcode, " index=", index ," value=", value,);
-            if (opcode == AudioOpcode.MasterVersion)
-                return 2400;
-            return 0;
-        }
-
-        auto aeffect = loadPlugin(lit!"D:\\vst\\ValhallaVintageVerb.dll".ptr, &vstHostCallback);
-        logDebug("loadPlugin returned ", cast(void*)aeffect);
-    }
-
     return go();
 }
+
+version = UseMidiInstrument;
+version = UsePCKeyboard;
+//version = PCKeyboardStartWithC4;
 
 //version = SinWave;
 //version = SawWave;
 version = GrandPiano;
 
-version = UseMidiInstrument;
-version = UsePCKeyboard;
-//version = PCKeyboardStartWithC4;
+//version = ValhallaReverb;
 
 int go()
 {
     import mar.arraybuilder;
     import audio.dag;
 
+    // Load project file
+    {
+        //import mar.json;
+
+    }
+
     ArrayBuilder!(MidiInstrument!void*) instruments;
     version (SinWave)
     {
         auto sinWave = SinOscillatorMidiInstrument();
         sinWave.initialize(OscillatorInstrumentData(.4));
-        addRootAudioGenerator(sinWave.asBase.asBase).enforce();
         instruments.tryPut(sinWave.asBase).enforce();
     }
     version (SawWave)
     {
         auto sawWave = SawOscillatorMidiInstrument();
         sawWave.initialize(OscillatorInstrumentData(.1));
-        addRootAudioGenerator(sawWave.asBase.asBase).enforce();
         instruments.tryPut(sawWave.asBase).enforce();
     }
     version (GrandPiano)
@@ -113,8 +101,31 @@ int go()
         SamplerMidiInstrument grandPiano;
         if (loadGrandPiano(&grandPiano, 3.0).failed)
             return 1; // fail
-        addRootAudioGenerator(grandPiano.asBase.asBase).enforce();
         instruments.tryPut(grandPiano.asBase).enforce();
+    }
+
+    version (ValhallaReverb)
+    {
+        auto valhallaEffect = tryLoadValhalla();
+        if (valhallaEffect is null)
+        {
+            logError("failed to load valhalla plugin");
+            return 1; // fail
+        }
+        auto valhallaEffectNode = from!"audio.vstnodes".VstEffect();
+        valhallaEffectNode.initialize(valhallaEffect);
+        foreach (instrument; instruments.data)
+        {
+            valhallaEffectNode.inputs.tryPut(instrument.asBase).enforce();
+        }
+        addRootAudioGenerator(valhallaEffectNode.asBase).enforce();
+    }
+    else
+    {
+        foreach (instrument; instruments.data)
+        {
+            addRootAudioGenerator(instrument.asBase).enforce();
+        }
     }
 
     version (UsePCKeyboard)
@@ -296,4 +307,54 @@ passfail loadGrandPiano(from!"audio.dag".SamplerMidiInstrument* instrument, floa
     }
     instrument.initialize(SamplerInstrumentData(samplesByNote, volumeScale, sharedChannelCount));
     return passfail.pass;
+}
+
+auto tryLoadValhalla()
+{
+    import mar.sentinel : lit;
+    import audio.vst : AudioOpcode, AEffect, loadPlugin, kEffectMagic, eff, effCanDo;
+
+    static extern (C) uint vstHostCallback(AEffect *effect,
+        AudioOpcode opcode, uint index, uint value, void *ptr, float opt)
+    {
+        import audio.vst;
+        //logDebug("vstHostCallback opcode=", opcode, " index=", index ," value=", value,);
+        if (opcode == AudioOpcode.MasterVersion)
+        {
+            logDebug("vstHostCallback MasterVersion");
+            return 2400;
+        }
+        logDebug("vstHostCallback unknown opcode ", opcode, " (index=", index, ", value=", value, ")");
+        return 0;
+    }
+
+    auto aeffect = loadPlugin(lit!"D:\\vst\\ValhallaVintageVerb.dll".ptr, &vstHostCallback);
+    logDebug("loadPlugin returned ", cast(void*)aeffect);
+
+    if (aeffect is null)
+    {
+        logError("loadPlugin failed");
+        // TODO: any cleanup?
+        return null;
+    }
+
+    if (aeffect.magic != kEffectMagic)
+    {
+        logError("expected vst plugin magic ", kEffectMagic, " but got ", aeffect.magic);
+        // TODO: any cleanup?
+        return null;
+    }
+
+    logDebug("VST: setting sample rate to ", audio.global.sampleFramesPerSec);
+    aeffect.dispatcher(aeffect, eff.setSampleRate, 0, 0, null, audio.global.sampleFramesPerSec);
+    logDebug("VST: setting block size to ", audio.global.bufferSampleFrameCount);
+    aeffect.dispatcher(aeffect, eff.setBlockSize, 0, audio.global.bufferSampleFrameCount, null, 0);
+
+    {
+        char[300] canDo;
+        const result = aeffect.dispatcher(aeffect, effCanDo, 0, 0, canDo.ptr, 0);
+        logDebug("VST: canDo='", canDo[0 .. result], "'");
+    }
+
+    return aeffect;
 }
