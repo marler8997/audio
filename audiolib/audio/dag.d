@@ -382,14 +382,9 @@ struct SamplerMidiInstrumentTypeA
     }
     static void reattackNote(ref SamplerInstrumentData data, MidiEvent* event, NoteState* state)
     {
-        import mar.math : abs;
-
-        if (state.reattackRestoreVolume is float.nan)
-        {
-            state.reattackRestoreVolume = state.base.targetVolume;
-            state.reattackVelocity = event.noteOn.velocity;
-            state.base.targetVolume = 0;
-        }
+        state.reattackRestoreVolume = state.base.targetVolume;
+        state.reattackVelocity = event.noteOn.velocity;
+        state.base.targetVolume = 0;
     }
     static void renderNote(ref SamplerInstrumentData data,
         NoteState* state, ubyte[] channels, RenderFormat.SamplePoint* buffer)
