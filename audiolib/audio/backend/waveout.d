@@ -174,13 +174,6 @@ private passfail setupGlobalData()
     //
     // Setup audio format
     //
-    // For now just match the render format so we don't have to convert
-    static if (is(RenderFormat == Pcm16Format))
-        const audioFormatID = WaveFormatTag.pcm;
-    else static if (is(RenderFormat == FloatFormat))
-        const audioFormatID = WaveFormatTag.float_;
-    else static assert("waveout does not support this render format");
-
     global.waveFormat.format.samplesPerSec  = audio.global.sampleFramesPerSec;
 
     global.waveFormat.format.bitsPerSample  = RenderFormat.SamplePoint.sizeof * 8;
@@ -190,12 +183,13 @@ private passfail setupGlobalData()
 
     global.waveFormat.format.avgBytesPerSec = global.waveFormat.format.blockAlign * audio.global.sampleFramesPerSec;
 
-    if(audioFormatID == WaveFormatTag.pcm)
+    // For now just match the render format so we don't have to convert
+    if (is(RenderFormat == Pcm16Format))
     {
         global.waveFormat.format.tag        = WaveFormatTag.pcm;
         global.waveFormat.format.extraSize  = 0; // Size of extra info
     }
-    else if(audioFormatID == WaveFormatTag.float_)
+    else if (is(RenderFormat == FloatFormat))
     {
         global.waveFormat.format.tag         = WaveFormatTag.extensible;
         global.waveFormat.format.extraSize   = 22; // Size of extra info
@@ -213,7 +207,7 @@ private passfail setupGlobalData()
     }
     else
     {
-        logError("Unsupported format", audioFormatID);
+        logError("waveout does not support this render format");
         return passfail.fail;
     }
 
