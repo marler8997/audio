@@ -43,7 +43,7 @@ string findprog(string prog)
 }
 
 immutable thisRepoPath = dirName(buildNormalizedPath(__FILE_FULL_PATH__));
-immutable gitPath = dirName(thisRepoPath);
+immutable gitPath = dirName(dirName(thisRepoPath));
 
 string relpath(T...)(T parts) { return buildPath(thisRepoPath, parts); }
 string gitpath(T...)(T parts) { return buildPath(gitPath, parts); }
