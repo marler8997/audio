@@ -37,7 +37,7 @@ struct MidiInstrument(T)
     // New Interface
     //
     mixin ForwardInheritBaseTemplate!(AudioGenerator, T);
-    ArrayBuilder!(MidiInputNode!void*) inputNodes;
+    ArrayBuilder!(MidiGenerator!void*) inputNodes;
 
     static if (is(T == void))
     {
@@ -48,7 +48,7 @@ struct MidiInstrument(T)
                 inputNodes[i].renderFinished(inputNodes[i], &this);
             }
         }
-        final passfail tryAddInputNode(MidiInputNode!void* inputNode)
+        final passfail tryAddInputNode(MidiGenerator!void* inputNode)
         {
             if (inputNodes.tryPut(inputNode).failed)
                 return passfail.fail;
@@ -58,8 +58,8 @@ struct MidiInstrument(T)
     }
 }
 
-// A node that inputs midi notes
-struct MidiInputNode(T)
+/// Generates midi events
+struct MidiGenerator(T)
 {
     // MidiInput nodes may or may not want to know all the instruments that are
     // going to request events from them.
@@ -72,12 +72,12 @@ struct MidiInputNode(T)
     void function(T* context, MidiInstrument!void* instrument) renderFinished;
 }
 
-struct MidiInputNodeTemplate(InputDevice)
+struct MidiGeneratorTemplate(InputDevice)
 {
     import mar.arraybuilder : ArrayBuilder;
     import audio.midi : MidiNote, MidiNoteMap;
 
-    mixin InheritBaseTemplate!MidiInputNode;
+    mixin InheritBaseTemplate!MidiGenerator;
     //bool[MidiNote.max + 1] onMap;
     ArrayBuilder!MidiEvent midiEvents;
     InputDevice inputDevice;

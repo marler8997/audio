@@ -3,10 +3,10 @@ module audio.windowsmidi;
 import mar.passfail;
 
 import audio.log;
-import audio.dag : MidiInputNodeTemplate;
+import audio.dag : MidiGeneratorTemplate;
 import audio.midi : MidiEvent;
 
-alias WindowsMidiInputNode = MidiInputNodeTemplate!WindowsMidiInputDevice;
+alias WindowsMidiGenerator = MidiGeneratorTemplate!WindowsMidiInputDevice;
 struct WindowsMidiInputDevice
 {
     import mar.windows.winmm;
@@ -47,7 +47,7 @@ struct WindowsMidiInputDevice
                 else
                 {
                     //logDebug("[MidiListenCallback] note ", note, " OFF, velocity=", velocity, " timestamp=", timestamp);
-                    const result = (cast(WindowsMidiInputNode*)instance).tryAddMidiEvent(
+                    const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
                         MidiEvent.makeNoteOff(timestamp, cast(MidiNote)note));
                     if (result.failed)
                     {
@@ -67,7 +67,7 @@ struct WindowsMidiInputDevice
                     logError("Bad MIDI velocity 0x", note.formatHex, ", the MSB is set");
                 else
                 {
-                    const result = (cast(WindowsMidiInputNode*)instance).tryAddMidiEvent(
+                    const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
                         MidiEvent.makeNoteOn(timestamp, cast(MidiNote)note, velocity));
                     if (result.failed)
                     {
@@ -84,7 +84,7 @@ struct WindowsMidiInputDevice
                 {
                     bool on = value >= 64;
                     //logDebug("[MidiListenCallback] sustain: ", on ? "ON" : "OFF");
-                    const result = (cast(WindowsMidiInputNode*)instance).tryAddMidiEvent(
+                    const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
                         MidiEvent.makeSustainPedal(timestamp,on));
                     if (result.failed)
                     {
@@ -124,11 +124,11 @@ struct WindowsMidiInputDevice
     private bool running;
     private MidiInHandle midiHandle;
 
-    static passfail startMidiDeviceInput(WindowsMidiInputNode* node, uint midiDeviceID)
+    static passfail startMidiDeviceInput(WindowsMidiGenerator* node, uint midiDeviceID)
     {
         if (node.inputDevice.running)
         {
-            logError("this MidiInputNode is already running");
+            logError("this MidiGenerator is already running");
             return passfail.fail;
         }
 
@@ -164,11 +164,11 @@ struct WindowsMidiInputDevice
     LopenFailed:
         return ret;
     }
-    static passfail stopMidiDeviceInput(WindowsMidiInputNode* node)
+    static passfail stopMidiDeviceInput(WindowsMidiGenerator* node)
     {
         if (!node.inputDevice.running)
         {
-            logError("cannot stop this MidiInputNode because it is not running");
+            logError("cannot stop this MidiGenerator because it is not running");
             return passfail.fail;
         }
 

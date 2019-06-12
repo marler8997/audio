@@ -151,7 +151,7 @@ int go()
     }
     version (UseMidiInstrument)
     {
-        auto midiInput = from!"audio.windowsmidi".WindowsMidiInputNode();
+        auto midiInput = from!"audio.windowsmidi".WindowsMidiGenerator();
         midiInput.initialize();
         foreach (i; 0 .. instruments.length)
         {

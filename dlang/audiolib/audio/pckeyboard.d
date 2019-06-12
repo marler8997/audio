@@ -5,10 +5,10 @@ import mar.passfail;
 
 import audio.log;
 import audio.renderformat;
-import audio.dag : MidiInputNodeTemplate;
+import audio.dag : MidiGeneratorTemplate;
 import audio.midi : MidiNote, MidiEvent;
 
-alias PCKeyboardInputNode = MidiInputNodeTemplate!PCKeyboardMidiInputDevice;
+alias PCKeyboardInputNode = MidiGeneratorTemplate!PCKeyboardMidiInputDevice;
 struct PCKeyboardMidiInputDevice
 {
     private bool running;
@@ -34,7 +34,7 @@ struct PCKeyboardMidiInputDevice
     {
         if (!node.inputDevice.running)
         {
-            logError("cannot stop this MidiInputNode because it is not running");
+            logError("cannot stop this MidiGenerator because it is not running");
             return passfail.fail;
         }
 
