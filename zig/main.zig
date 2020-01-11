@@ -69,6 +69,7 @@ fn finishGlobals() anyerror!void {
 }
 //
 //
+const SingleSawTone = true;
 const UseMidiInstrument = true;
 //version = UsePCKeyboard;
 ////version = PCKeyboardStartWithC4;
@@ -90,9 +91,12 @@ fn go() anyerror!void {
 //    }
 //
 
-    var sawGenerator = audio.oscillators.SawGenerator.init(
-        audio.midi.getStdFreq(audio.midi.MidiNote.g4), 0.1);
-    try audio.render.addRootAudioGenerator(&sawGenerator.generator);
+    var sawGenerator : audio.oscillators.SawGenerator = undefined;
+    if (SingleSawTone) {
+        sawGenerator = audio.oscillators.SawGenerator.init(
+            audio.midi.getStdFreq(audio.midi.MidiNote.g4), 0.1);
+        try audio.render.addRootAudioGenerator(&sawGenerator.generator);
+    }
 
     var instruments = std.ArrayList(*audio.dag.MidiInstrument).init(audio.global.allocator);
 //    version (SinWave)
