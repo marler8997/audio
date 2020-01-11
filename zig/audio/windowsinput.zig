@@ -14,12 +14,12 @@ pub const KEY_ESCAPE = VK_ESCAPE;
 pub const ConsoleMode = struct {
     oldValue: DWORD,
     pub fn setup() !ConsoleMode {
-        var stdin = try std.io.getStdIn();
+        var stdin = std.io.getStdIn();
 
         var mode : ConsoleMode = undefined;
         if(0 == stdext.os.windows.kernel32.GetConsoleMode(stdin.handle, &mode.oldValue))
         {
-            logError("Error: GetConsoleMode failed, e={}", kernel32.GetLastError());
+            logError("Error: GetConsoleMode failed, e={}", .{kernel32.GetLastError()});
             return error.Unexpected;
         }
         var newMode = mode.oldValue;
@@ -29,19 +29,19 @@ pub const ConsoleMode = struct {
             | ENABLE_LINE_INPUT       // disable line input, we want characters immediately
             | ENABLE_PROCESSED_INPUT; // we'll handle CTL-C so we can cleanup and reset the console mode
         newMode &= ~flagsToDisable;
-        log("Current console mode 0x{x}, setting to 0x{x}", mode.oldValue, newMode);
+        log("Current console mode 0x{x}, setting to 0x{x}", .{mode.oldValue, newMode});
 
         if(0 == stdext.os.windows.kernel32.SetConsoleMode(stdin.handle, newMode))
         {
-            logError("Error: SetConsoleMode failed, e={}", kernel32.GetLastError());
+            logError("Error: SetConsoleMode failed, e={}", .{kernel32.GetLastError()});
             return error.Unexpected;
         }
         return mode;
     }
     pub fn restore(self: *ConsoleMode) void {
-        var stdin = std.io.getStdIn() catch unreachable;
+        var stdin = std.io.getStdIn();
         if (0 == stdext.os.windows.kernel32.SetConsoleMode(stdin.handle, self.oldValue)) {
-            logError("SetConsoleMode failed, e={}", kernel32.GetLastError());
+            logError("SetConsoleMode failed, e={}", .{kernel32.GetLastError()});
             //return error.Unexpected;
         }
     }
@@ -49,6 +49,7 @@ pub const ConsoleMode = struct {
 
 pub fn InputEvents(comptime maxSize: comptime_int) type {
     return struct {
+        // align(@typeInfo([*]INPUT_RECORD).Pointer.alignment)
         buffer: [maxSize]InputEvent,
         pub fn init() @This() {
             return @This() {
@@ -56,15 +57,15 @@ pub fn InputEvents(comptime maxSize: comptime_int) type {
             };
         }
         pub fn read(self: *@This()) ![]InputEvent {
-            var stdin = try std.io.getStdIn();
+            var stdin = std.io.getStdIn();
             var inputCount : DWORD = undefined;
             if(0 == stdext.os.windows.kernel32.ReadConsoleInputA(
-                stdin.handle, @ptrCast([*]INPUT_RECORD, &self.buffer), maxSize, &inputCount))
+                stdin.handle, @ptrCast([*]INPUT_RECORD, &self.buffer[0]), maxSize, &inputCount))
             {
-                logError("Error: ReadConsoleInput failed, e={}", kernel32.GetLastError());
+                logError("Error: ReadConsoleInput failed, e={}", .{kernel32.GetLastError()});
                 return error.Unexpected;
             }
-            logDebug("got {} input events!", inputCount);
+            logDebug("got {} input events!", .{inputCount});
             return self.buffer[0 .. inputCount];
         }
     };
@@ -74,7 +75,7 @@ comptime {
     std.debug.assert(@sizeOf(InputEvent) == @sizeOf(INPUT_RECORD));
     std.debug.assert(@sizeOf(InputEvent.KeyEvent) == @sizeOf(INPUT_RECORD));
 }
-const InputEvent = packed union {
+const InputEvent = extern union {
     Record: INPUT_RECORD,
     KeyEvent : KeyEvent,
 
@@ -85,7 +86,7 @@ const InputEvent = packed union {
         return if (self.Record.EventType == stdext.os.windows.kernel32.KEY_EVENT)
             self.KeyEvent else null;
     }
-    pub const KeyEvent = struct {
+    pub const KeyEvent = extern struct {
         Record: INPUT_RECORD,
         pub fn getKeyCode(self: *const KeyEvent) DWORD {
             return self.Record.Event.KeyEvent.wVirtualKeyCode;

@@ -6,5 +6,5 @@ pub fn dumpData(comptime prefix: []const u8, data: []u8) void {
     }
 }
 pub fn ptrData(data: var) []u8 {
-    return @ptrCast([*]u8, data)[0 .. @sizeOf(@typeOf(data.*))];
+    return @ptrCast([*]u8, data)[0 .. @sizeOf(@TypeOf(data.*))];
 }

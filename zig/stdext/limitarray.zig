@@ -34,6 +34,6 @@ pub fn ptrLessThan(left: var, right: var) bool {
     return @ptrToInt(left) < @ptrToInt(right);
 }
 
-pub fn limitPointersToSlice(ptr: var, limit: var) stdext.meta.SliceType(@typeOf(ptr)) {
-    return ptr[0 .. (@ptrToInt(limit) - @ptrToInt(ptr)) / @sizeOf(@typeOf(ptr).Child)];
+pub fn limitPointersToSlice(ptr: var, limit: var) stdext.meta.SliceType(@TypeOf(ptr)) {
+    return ptr[0 .. (@ptrToInt(limit) - @ptrToInt(ptr)) / @sizeOf(@TypeOf(ptr).Child)];
 }

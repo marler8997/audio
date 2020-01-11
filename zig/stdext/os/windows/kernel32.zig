@@ -2,15 +2,15 @@ const std = @import("std");
 
 usingnamespace std.os.windows;
 
-pub extern "kernel32" stdcallcc fn CreateEventA(
+pub extern "kernel32" fn CreateEventA(
     lpSecurityAttributes: ?LPSECURITY_ATTRIBUTES,
     bManualReset: BOOL,
     bInitialState: BOOL,
     lpName: ?LPCSTR
-) HANDLE;
+) callconv(.Stdcall) HANDLE;
 
-pub extern "kernel32" stdcallcc fn ResetEvent(hEvent: HANDLE) BOOL;
-pub extern "kernel32" stdcallcc fn SetEvent(hEvent: HANDLE) BOOL;
+pub extern "kernel32" fn ResetEvent(hEvent: HANDLE) callconv(.Stdcall) BOOL;
+pub extern "kernel32" fn SetEvent(hEvent: HANDLE) callconv(.Stdcall) BOOL;
 
 pub const FOCUS_EVENT = 0x0010;
 pub const KEY_EVENT   = 0x0001;
@@ -41,17 +41,17 @@ pub const INPUT_RECORD = extern struct {
     },
 };
 
-pub extern "kernel32" stdcallcc fn GetConsoleMode(
+pub extern "kernel32" fn GetConsoleMode(
     hConsoleHandle : HANDLE,
     lpMode: *DWORD
-) BOOL;
-pub extern "kernel32" stdcallcc fn SetConsoleMode(
+) callconv(.Stdcall) BOOL;
+pub extern "kernel32" fn SetConsoleMode(
     hConsoleHandle : HANDLE,
     dwMode: DWORD
-) BOOL;
-pub extern "kernel32" stdcallcc fn ReadConsoleInputA(
+) callconv(.Stdcall) BOOL;
+pub extern "kernel32" fn ReadConsoleInputA(
     hConsoleInput : HANDLE,
     lpBuffer: [*]INPUT_RECORD,
     nLength: DWORD,
     lpNumberOfEventsRead: *DWORD,
-) BOOL;
+) callconv(.Stdcall) BOOL;

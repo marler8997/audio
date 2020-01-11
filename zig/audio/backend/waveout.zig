@@ -55,10 +55,10 @@ const LocalError  = error {
 
 fn startingRenderLoop() anyerror!void {
 
-    logDebug("waveout: startingRenderLoop");
+    logDebug("waveout: startingRenderLoop", .{});
     try setupGlobalData();
     const temp : usize = @sizeOf(WAVEFORMATEX);
-    //logDebug("@sizeOf(WAVEFORMATEX)={}", temp);
+    //logDebug("@sizeOf(WAVEFORMATEX)={}", .{temp});
     //stdext.debug.dumpData("WAVEFORMATEX", stdext.debug.ptrData(&global.waveFormat));
     const result = waveOutOpen(&global.waveOut,
         WAVE_MAPPER,
@@ -68,15 +68,15 @@ fn startingRenderLoop() anyerror!void {
         CALLBACK_FUNCTION);
     if (result != MMSYSERR_NOERROR)
     {
-        //printf("waveOutOpen failed (result=%d '%s')\n", result, getMMRESULTString(result));
-        logError("waveOutOpen failed, result={}", result);
+        //printf("waveOutOpen failed (result=%d '%s')\n", .{result, getMMRESULTString(result)});
+        logError("waveOutOpen failed, result={}", .{result});
         return LocalError.WaveOutOpenFailed;
     }
 }
 fn stoppingRenderLoop() anyerror!void {
     const result = waveOutClose(global.waveOut);
     if (result != MMSYSERR_NOERROR) {
-        logError("waveOutClose failed, result={}", result);
+        logError("waveOutClose failed, result={}", .{result});
         return LocalError.WaveOutCloseFailed;
     }
 }
@@ -112,22 +112,22 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
     // TODO: is prepare necessary each time with no backbuffer?
     {
         const result = waveOutPrepareHeader(global.waveOut,
-            &global.backBuffer.base, @sizeOf(@typeOf(global.backBuffer.*)));
+            &global.backBuffer.base, @sizeOf(@TypeOf(global.backBuffer.*)));
         if (result != MMSYSERR_NOERROR) {
-            logError("waveOutPrepareHeader failed, result={}", result);
+            logError("waveOutPrepareHeader failed, result={}", .{result});
             return LocalError.WaveOutPrepareHeaderFailed;
         }
     }
     if(0 == ResetEvent(global.backBuffer.freeEvent))
     {
-        logError("ResetEvent failed, e={}", std.os.windows.kernel32.GetLastError());
+        logError("ResetEvent failed, e={}", .{std.os.windows.kernel32.GetLastError()});
         return error.Unexpected;
     }
     {
         const result = waveOutWrite(global.waveOut,
-            &global.backBuffer.base, @sizeOf(@typeOf(global.backBuffer.*)));
+            &global.backBuffer.base, @sizeOf(@TypeOf(global.backBuffer.*)));
         if (result != MMSYSERR_NOERROR) {
-            logError("waveOutWrite failed, result={}", result);
+            logError("waveOutWrite failed, result={}", .{result});
             return LocalError.WaveOutWriteFailed;
         }
     }
@@ -135,16 +135,16 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
     // Wait for the front buffer, this delays the next render so it doesn't happen
     // too soon.
     //logDebug("waiting for play buffer...");
-    WaitForSingleObject(global.frontBuffer.freeEvent, INFINITE) catch |err| {
-        logError("WaitForSingleObject failed, result={}, e={}", err, std.os.windows.kernel32.GetLastError());
+    WaitForSingleObjectEx(global.frontBuffer.freeEvent, INFINITE, false) catch |err| {
+        logError("WaitForSingleObjectEx failed, result={}, e={}", .{err, std.os.windows.kernel32.GetLastError()});
         return err;
     };
     // TODO: is unprepare necessary with no backbuffer?
     {
         const result = waveOutUnprepareHeader(global.waveOut,
-            &global.frontBuffer.base, @sizeOf(@typeOf(global.backBuffer.*)));
+            &global.frontBuffer.base, @sizeOf(@TypeOf(global.backBuffer.*)));
         if (result != MMSYSERR_NOERROR) {
-            logError("waveOutUnprepareHeader failed, result={}", result);
+            logError("waveOutUnprepareHeader failed, result={}", .{result});
             return LocalError.WaveOutUnprepareHeaderFailed;
         }
     }
@@ -178,13 +178,13 @@ fn setupGlobalData() anyerror!void {
             } else if (audio.global.channelCount == 2) {
                 global.waveFormat.dwChannelMask  = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
             } else {
-                logError("waveout channel count {} not implemented", audio.global.channelCount);
+                logError("waveout channel count {} not implemented", .{audio.global.channelCount});
                 return error.NotImplemented;
             }
             global.waveFormat.SubFormat          = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
         },
         else => {
-            logError("waveout doesn't support the current render format");
+            logError("waveout doesn't support the current render format", .{});
             return error.RenderFormatError;
         },
     }
@@ -197,7 +197,7 @@ fn setupGlobalData() anyerror!void {
         waveHeader.base.lpData = @ptrCast([*]u8, buffer.ptr);
         waveHeader.freeEvent = CreateEventA(null, 1, 1, null);
         if (@ptrToInt(waveHeader.freeEvent) == 0) {
-            logError("CreateEventA failed, e={}", std.os.windows.kernel32.GetLastError());
+            logError("CreateEventA failed, e={}", .{std.os.windows.kernel32.GetLastError()});
             return error.BadValue;
         }
     }
@@ -205,15 +205,15 @@ fn setupGlobalData() anyerror!void {
     global.backBuffer = &global.waveHeaders[1];
 }
 
-pub stdcallcc fn waveOutCallback(waveout: HWAVEOUT, msg: UINT, instance: *DWORD,
-    param1: *DWORD, param2: *DWORD) void {
+pub fn waveOutCallback(waveout: HWAVEOUT, msg: UINT, instance: *DWORD,
+    param1: *DWORD, param2: *DWORD) callconv(.Stdcall) void {
 
     if (msg == WOM_OPEN) {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_OPEN)");
-        logDebug("WOM_OPEN (instance={},param1={},param2={})", instance, param1, param2);
+        logDebug("WOM_OPEN (instance={},param1={},param2={})", .{instance, param1, param2});
     } else if (msg == WOM_CLOSE) {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_CLOSE)");
-        logDebug("WOM_CLOSE (instance={},param1={},param2={})", instance, param1, param2);
+        logDebug("WOM_CLOSE (instance={},param1={},param2={})", .{instance, param1, param2});
     } else if (msg == WOM_DONE) {
         ////logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_DONE)");
         //logDebug("WOM_DONE (instance={},param1={},param2={})", instance, param1, param2);
@@ -223,11 +223,11 @@ pub stdcallcc fn waveOutCallback(waveout: HWAVEOUT, msg: UINT, instance: *DWORD,
         //header->dwBufferLength, header->data);
         //QueryPerformanceCounter(&header.setEventTime);
         if (0 == SetEvent(header.freeEvent)) {
-            logError("SetEvent on waveout buffer failed, this should cause waveout thread to hang");
+            logError("SetEvent on waveout buffer failed, this should cause waveout thread to hang", .{});
         }
     } else {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, ")");
-        logDebug("WOM_? ({}) (instance={},param1={},param2={})", msg, instance, param1, param2);
+        logDebug("WOM_? ({}) (instance={},param1={},param2={})", .{msg, instance, param1, param2});
     }
     //flushDebug();
 }

@@ -35,7 +35,7 @@ pub const WAVERR_STILLPLAYING    : MMRESULT = 33;
 pub const WAVERR_UNPREPARED      : MMRESULT = 34;
 
 pub const WAVEHDR = extern struct {
-    lpData: LPSTR,
+    lpData: [*]u8,
     dwBufferLength: DWORD,
     dwBytesRecorded: DWORD,
     dwUser: DWORD_PTR,
@@ -45,7 +45,23 @@ pub const WAVEHDR = extern struct {
     reserved: DWORD_PTR,
 };
 
-pub const WAVE_MAPPER : *UINT = @intToPtr(*UINT, @bitCast(usize, isize(-1)));
+// TODO: use this type if I need a UINT* that can be assigned -1
+//const OPTIONAL_UINTPTR = extern union {
+//    ptr : *UINT,
+//    value : isize,
+//    fn initNull() @This() {
+//        return @This() {
+//            .value = -1,
+//        };
+//    }
+//    fn init(ptr: *UINT) @This() {
+//        return @This() {
+//            .ptr = ptr,
+//        };
+//    }
+//};
+
+pub const WAVE_MAPPER : UINT = 0xFFFFFFFF;
 
 pub const CALLBACK_FUNCTION = 0x30000;
 
@@ -69,53 +85,53 @@ pub const MOM_OPEN      = 967;
 pub const MOM_CLOSE     = 968;
 pub const MOM_DONE      = 969;
 
-pub extern "winmm" stdcallcc fn waveOutOpen(
+pub extern "winmm" fn waveOutOpen(
     phwo: *HWAVEOUT,
-    uDeviceID: *UINT,
+    uDeviceID: UINT,
     pwfx: *WAVEFORMATEX,
     dwCallback: *const DWORD,
     dwCallbackInstance: ?*DWORD,
     fdwOpen: DWORD,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
 
-pub extern "winmm" stdcallcc fn waveOutClose(
+pub extern "winmm" fn waveOutClose(
     hwo: HWAVEOUT,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
 
-pub extern "winmm" stdcallcc fn waveOutPrepareHeader(
-    hwo: HWAVEOUT,
-    pwh: *const WAVEHDR,
-    cbwh: UINT,
-) MMRESULT;
-
-pub extern "winmm" stdcallcc fn waveOutUnprepareHeader(
+pub extern "winmm" fn waveOutPrepareHeader(
     hwo: HWAVEOUT,
     pwh: *const WAVEHDR,
     cbwh: UINT,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
 
-pub extern "winmm" stdcallcc fn waveOutWrite(
+pub extern "winmm" fn waveOutUnprepareHeader(
     hwo: HWAVEOUT,
     pwh: *const WAVEHDR,
     cbwh: UINT,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
 
-pub extern "winmm" stdcallcc fn midiInOpen(
+pub extern "winmm" fn waveOutWrite(
+    hwo: HWAVEOUT,
+    pwh: *const WAVEHDR,
+    cbwh: UINT,
+) callconv(.Stdcall) MMRESULT;
+
+pub extern "winmm" fn midiInOpen(
     lphMidiIn: *HMIDIIN,
     uDeviceID: UINT,
     dwCallback: *const DWORD,
     dwCallbackInstance: *DWORD,
     dwFlags: DWORD,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
 
-pub extern "winmm" stdcallcc fn midiInClose(
+pub extern "winmm" fn midiInClose(
     hMidiIn: HMIDIIN,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
 
-pub extern "winmm" stdcallcc fn midiInStart(
+pub extern "winmm" fn midiInStart(
     hMidiIn: HMIDIIN,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
 
-pub extern "winmm" stdcallcc fn midiInStop(
+pub extern "winmm" fn midiInStop(
     hMidiIn: HMIDIIN,
-) MMRESULT;
+) callconv(.Stdcall) MMRESULT;
