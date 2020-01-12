@@ -7,6 +7,7 @@ import audio.log;
 import audio.inherits;
 import audio.renderformat;
 static import audio.global;
+import audio.events : AudioEvent, createMidiEventRange;
 import audio.midi : MidiNoteMapView, MidiEventType, MidiEvent;
 
 struct AudioGenerator(T)
@@ -14,7 +15,7 @@ struct AudioGenerator(T)
     // NOTE: this tree structure is probably not very cache friendly.
     //       mabye there's a way to flatten out the memory for the render node tree?
 
-    void function(T* me, ubyte[] channels, RenderFormat.SamplePoint* buffer,
+    void function(T* me, ubyte[] channels, AudioEvent[] events, RenderFormat.SamplePoint* buffer,
         const RenderFormat.SamplePoint* limit) mix;
 
     // Some generators may need to know how many output nodes are connected
@@ -37,7 +38,7 @@ struct MidiInstrument(T)
     // New Interface
     //
     mixin ForwardInheritBaseTemplate!(AudioGenerator, T);
-    ArrayBuilder!(MidiGenerator!void*) inputNodes;
+    ArrayBuilder!(MidiSubAudioGenerator!void*) inputNodes;
 
     static if (is(T == void))
     {
@@ -48,7 +49,7 @@ struct MidiInstrument(T)
                 inputNodes[i].renderFinished(inputNodes[i], &this);
             }
         }
-        final passfail tryAddInputNode(MidiGenerator!void* inputNode)
+        final passfail tryAddInputNode(MidiSubAudioGenerator!void* inputNode)
         {
             if (inputNodes.tryPut(inputNode).failed)
                 return passfail.fail;
@@ -58,6 +59,91 @@ struct MidiInstrument(T)
     }
 }
 
+struct MidiSubAudioGenerator(T)
+{
+    // Some generators may need to know how many output nodes are connected
+    passfail function(T* me, void* outputNode) connectOutputNode;
+    // Some generators may need to know how many output nodes are connected
+    passfail function(T* me, void* outputNode) disconnectOutputNode;
+
+    // This let's the audio generator that is can clean up any state for this frame.
+    // This function must be called after each buffer is done being rendered.
+    // This function may be called more than once before the next mix/set call.
+    void function(T* me, void* outputNode) renderFinished;
+
+    void function(T* me, AudioEvent midiEvent) handleMidiEvent;
+
+    void function(T* me, ubyte[] channels, RenderFormat.SamplePoint* buffer,
+        const RenderFormat.SamplePoint* limit) mix;
+}
+
+// Takes a MidiAudioGenerator and takes midi events and forwards them to
+// the underlying MidiAudioGenerator during the render
+struct MidiAudioGenerator
+{
+    /*
+    import audio.midi : MidiNote, MidiNoteMap;
+    */
+    mixin InheritBaseTemplate!AudioGenerator;
+    MidiSubAudioGenerator!void* generator;
+
+
+    void initialize(MidiSubAudioGenerator!void* generator)
+    {
+        this.base.mix = &mix;
+        this.base.connectOutputNode = &connectOutputNode;
+        this.base.disconnectOutputNode = &disconnectOutputNode;
+        this.base.renderFinished = &renderFinished;
+
+        this.generator = generator;
+    }
+
+    static passfail connectOutputNode(typeof(this)* me, void* outputNode)
+    {
+        return me.generator.connectOutputNode(me.generator, outputNode);
+    }
+    static passfail disconnectOutputNode(typeof(this)* me, void* outputNode)
+    {
+        return me.generator.disconnectOutputNode(me.generator, outputNode);
+    }
+    static void renderFinished(typeof(this)* me, void* outputNode)
+    {
+        return me.generator.renderFinished(me.generator, outputNode);
+    }
+
+    private static void mix(typeof(this)* me, ubyte[] channels, AudioEvent[] events,
+        RenderFormat.SamplePoint* buffer, const RenderFormat.SamplePoint* limit)
+    {
+        RenderFormat.SamplePoint* nextBuffer = buffer;
+        auto eventRange = createMidiEventRange(events);
+        for (;;)
+        {
+            RenderFormat.SamplePoint* nextLimit;
+            if (eventRange.empty)
+                nextLimit = cast(typeof(nextLimit))limit;
+            else
+            {
+                auto event = eventRange.front;
+                nextLimit = buffer + (audio.global.channelCount * event.samplesSinceRender);
+                assert(nextLimit >= nextBuffer && nextLimit <= limit);
+                me.generator.handleMidiEvent(me.generator, event);
+                eventRange.popFront;
+            }
+            me.generator.mix(me.generator, channels, nextBuffer, nextLimit);
+            if (nextLimit == limit)
+                break;
+            nextBuffer = nextLimit;
+        }
+    }
+}
+
+MidiAudioGenerator createMidiAudioGenerator(T)()
+{
+    MidiAudioGenerator generator = void;
+    generator.initialize();
+}
+
+
 /// Generates midi events
 struct MidiGenerator(T)
 {
@@ -65,7 +151,7 @@ struct MidiGenerator(T)
     // going to request events from them.
     //void function(T* context, void* instrument) connectInstrument;
 
-    MidiEvent[] function(T* context, MidiInstrument!void* instrument) getMidiEvents;
+    //MidiEvent[] function(T* context, MidiInstrument!void* instrument) getMidiEvents;
 
     // This let's the midi input node that it can now clean up all it's events.
     // This function must be called after each buffer is done being rendered.
@@ -79,12 +165,12 @@ struct MidiGeneratorTemplate(InputDevice)
 
     mixin InheritBaseTemplate!MidiGenerator;
     //bool[MidiNote.max + 1] onMap;
-    ArrayBuilder!MidiEvent midiEvents;
+    //ArrayBuilder!MidiEvent midiEvents;
     InputDevice inputDevice;
 
     final void initialize()
     {
-        this.base.getMidiEvents = &getMidiEvents;
+        //this.base.getMidiEvents = &getMidiEvents;
         this.base.renderFinished = &renderFinished;
     }
 
@@ -101,11 +187,13 @@ struct MidiGeneratorTemplate(InputDevice)
         //return midiEvents.tryPut(event);
     }
 
+    /*
     static MidiEvent[] getMidiEvents(typeof(this)* me, MidiInstrument!void* instrument)
     {
         //if (me.midiEvents.data.length > 0) logDebug("returning ", me.midiEvents.length, " midi events");
         return me.midiEvents.data;
     }
+    */
     static void renderFinished(typeof(this)* me, MidiInstrument!void* instrument)
     {
         me.midiEvents.shrinkTo(0);
@@ -494,7 +582,7 @@ struct MidiInstrumentTypeA(Renderer)
 {
     import audio.midi : MidiNote, MidiNoteMap;
 
-    mixin InheritBaseTemplate!MidiInstrument;
+    mixin InheritBaseTemplate!MidiSubAudioGenerator;
 
     MidiNoteMap!(Renderer.NoteState, ".base.note") notes;
     Renderer.InstrumentData instrumentData;
@@ -534,9 +622,11 @@ struct MidiInstrumentTypeA(Renderer)
         me.asBase.sendInputNodesRenderFinished();
     }
 
-    private static void mix(typeof(this)* me, ubyte[] channels, RenderFormat.SamplePoint* buffer,
-        const RenderFormat.SamplePoint* limit)
+    private static void mix(typeof(this)* me, ubyte[] channels, AudioEvent[] events,
+        RenderFormat.SamplePoint* buffer, const RenderFormat.SamplePoint* limit)
     {
+        assert(0, "REMOVE THIS CODE, HANDLING EVENTS DIFFERENTLY NOW!");
+        /*
         foreach (i; 0 .. me.base.inputNodes.length)
         {
             auto events = me.base.inputNodes[i].getMidiEvents(me.base.inputNodes[i], me.asBase);
@@ -544,6 +634,7 @@ struct MidiInstrumentTypeA(Renderer)
             handleMidiEvents(me, events);
         }
         render(me, channels, buffer, limit);
+        */
     }
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!

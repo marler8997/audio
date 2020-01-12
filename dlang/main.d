@@ -83,22 +83,22 @@ int go()
 
     }
 
-    ArrayBuilder!(MidiInstrument!void*) instruments;
+    ArrayBuilder!MidiAudioGenerator instruments;
     version (SinWave)
     {
-        auto sinWave = SinOscillatorMidiInstrument();
+        MidiAudioGenerator sinWave = createMidiAudioGenerator!SinOscillatorMidiInstrument();
         sinWave.initialize(OscillatorInstrumentData(.4));
         instruments.tryPut(sinWave.asBase).enforce();
     }
     version (SawWave)
     {
-        auto sawWave = SawOscillatorMidiInstrument();
+        MidiAudioGenerator sawWave = createMidiAudioGenerator!SawOscillatorMidiInstrument();
         sawWave.initialize(OscillatorInstrumentData(.1));
         instruments.tryPut(sawWave.asBase).enforce();
     }
     version (GrandPiano)
     {
-        SamplerMidiInstrument grandPiano;
+        MidiAudioGenerator grandPiano;
         if (loadGrandPiano(&grandPiano, 3.0).failed)
             return 1; // fail
         instruments.tryPut(grandPiano.asBase).enforce();

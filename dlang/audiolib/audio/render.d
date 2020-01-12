@@ -3,26 +3,32 @@ module audio.render;
 import mar.from;
 import mar.passfail;
 import mar.math : sin;
+import mar.arraybuilder : ArrayBuilder;
 
 import audio.log;
 static import audio.global;
 static import audio.backend;
 import audio.renderformat;
+import audio.events : AudioEvent;
 import audio.dag : AudioGenerator;
 
 struct Global
 {
-    import mar.arraybuilder : ArrayBuilder;
     version (Windows)
     {
         import mar.windows : SRWLock;
-        SRWLock lock;
+        SRWLock renderLock;
+        SRWLock eventsLock;
     }
     //
     // The generators connected directly to the audio backend
     //
     ArrayBuilder!(AudioGenerator!void*) rootAudioGenerators;
     void* backendOutputNode; // just leave as null for now
+    ArrayBuilder!AudioEvent[2] eventLists;
+    bool swapEventLists;
+
+    auto getPendingEventList() { return &eventLists[swapEventLists ? 1 : 0]; }
 }
 __gshared Global global;
 
@@ -31,30 +37,37 @@ passfail renderPlatformInit()
     version (Windows)
     {
         import mar.windows.kernel32 : InitializeSRWLock;
-        InitializeSRWLock(&global.lock);
+        InitializeSRWLock(&global.renderLock);
+        InitializeSRWLock(&global.eventsLock);
     }
     return passfail.pass;
 }
 
+// TODO: move this to the mar library
+version (Windows)
+{
+    import mar.windows : SRWLock;
+    void enterCriticalSection(SRWLock* lock)
+    {
+        pragma(inline, true);
+        import mar.windows.kernel32 : AcquireSRWLockExclusive;
+        AcquireSRWLockExclusive(lock);
+    }
+    void exitCriticalSection(SRWLock* lock)
+    {
+        pragma(inline, true);
+        import mar.windows.kernel32 : AcquireSRWLockExclusive;
+        AcquireSRWLockExclusive(lock);
+    }
+}
+
 final void enterRenderCriticalSection()
 {
-    pragma(inline, true);
-
-    version (Windows)
-    {
-        import mar.windows.kernel32 : AcquireSRWLockExclusive;
-        AcquireSRWLockExclusive(&global.lock);
-    }
+    enterCriticalSection(&global.renderLock);
 }
 final void exitRenderCriticalSection()
 {
-    pragma(inline, true);
-
-    version (Windows)
-    {
-        import mar.windows.kernel32 : ReleaseSRWLockExclusive;
-        ReleaseSRWLockExclusive(&global.lock);
-    }
+    exitCriticalSection(&global.renderLock);
 }
 
 auto addRootAudioGenerator(T)(AudioGenerator!T* generator)
@@ -185,6 +198,15 @@ void render(ubyte[] channels, RenderFormat.SamplePoint* buffer, const RenderForm
     //
     zero(buffer, (limit - buffer) * buffer[0].sizeof);
 
+    ArrayBuilder!AudioEvent* events;
+    {
+        enterCriticalSection(&global.eventsLock);
+        scope (exit) exitCriticalSection(&global.eventsLock);
+        events = &global.eventLists[global.swapEventLists ? 1 : 0];
+        global.swapEventLists = !global.swapEventLists;
+    }
+    scope (exit) events.shrinkTo(0);
+
     enterRenderCriticalSection();
     scope (exit) exitRenderCriticalSection();
 
@@ -192,7 +214,7 @@ void render(ubyte[] channels, RenderFormat.SamplePoint* buffer, const RenderForm
     for (size_t i = 0; i < global.rootAudioGenerators.length; i++)
     {
         auto generator = global.rootAudioGenerators[i];
-        generator.mix(generator, channels, buffer, limit);
+        generator.mix(cast(void*)generator, channels, events.data, buffer, limit);
     }
     // Notify each node that the render is finished
     for (size_t i = 0; i < global.rootAudioGenerators.length; i++)
