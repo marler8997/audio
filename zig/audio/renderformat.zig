@@ -1,5 +1,5 @@
 
-const stdext = @import("../stdext.zig");
+const stdext = @import("stdext");
 
 const options = @import("./renderformat/options.zig");
 

@@ -12,6 +12,7 @@ pub fn build(b: *Builder) !void {
     const exe = b.addExecutable("audio", "main.zig");
     exe.setBuildMode(mode);
     exe.install();
+    exe.addPackagePath("stdext", "stdext.zig");
     exe.addPackagePath("win32", zigwin32_index_file);
 
     const windows_midi = b.addExecutable("windows-midi", "tools" ++ std.fs.path.sep_str ++ "windows-midi.zig");

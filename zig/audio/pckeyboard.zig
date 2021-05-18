@@ -1,8 +1,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const stdext = @import("../stdext.zig");
-
 const audio = @import("../audio.zig");
 usingnamespace audio.log;
 

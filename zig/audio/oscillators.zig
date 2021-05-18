@@ -1,4 +1,4 @@
-const stdext = @import("../stdext.zig");
+const stdext = @import("stdext");
 usingnamespace stdext.limitarray;
 
 const audio = @import("../audio.zig");
