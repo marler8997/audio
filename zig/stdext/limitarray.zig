@@ -30,10 +30,10 @@ pub fn LimitArray(comptime T : type) type {
     };
 }
 
-pub fn ptrLessThan(left: var, right: var) bool {
+pub fn ptrLessThan(left: anytype, right: anytype) bool {
     return @ptrToInt(left) < @ptrToInt(right);
 }
 
-pub fn limitPointersToSlice(ptr: var, limit: var) stdext.meta.SliceType(@TypeOf(ptr)) {
-    return ptr[0 .. (@ptrToInt(limit) - @ptrToInt(ptr)) / @sizeOf(@TypeOf(ptr).Child)];
+pub fn limitPointersToSlice(ptr: anytype, limit: anytype) stdext.meta.SliceType(@TypeOf(ptr)) {
+    return ptr[0 .. (@ptrToInt(limit) - @ptrToInt(ptr)) / @sizeOf(@typeInfo(@TypeOf(ptr)).Pointer.child)];
 }

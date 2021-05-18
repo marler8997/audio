@@ -2,7 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 const audio = @import("./audio.zig");
-usingnamespace audio.log;
+//usingnamespace audio.log;
 
 
 //import mar.from;
@@ -14,7 +14,7 @@ usingnamespace audio.log;
 //import audio.renderformat;
 //import audio.render;
 //
-pub fn main() anyerror!void {
+pub fn main() !void {
 
     //{import audio.midi : unittest1; unittest1(); }
 
@@ -36,11 +36,11 @@ fn setupGlobalDefaults() anyerror!void {
     audio.global.channelCount = 2;
     //audio.global.sampleFramesPerSec = 44100;
     audio.global.sampleFramesPerSec = 48000;
-    log("default set to {} channels at {} Hz", .{audio.global.channelCount, audio.global.sampleFramesPerSec});
+    audio.log.log("default set to {} channels at {} Hz", .{audio.global.channelCount, audio.global.sampleFramesPerSec});
 
     audio.global.bufferSampleFrameCount = 0; // set to 0 to mean it's not set yet
 
-    audio.global.backendFuncs = switch (builtin.os) {
+    audio.global.backendFuncs = switch (builtin.os.tag) {
         .windows => &audio.backend.waveout.funcs,
         //.windows => &audio.backend.wasapi.funcs,
         .linux => &audio.backend.alsa.funcs,
@@ -80,7 +80,7 @@ const SawWave = true;
 //
 ////version = ValhallaReverb;
 //
-fn go() anyerror!void {
+fn go() !void {
 //    import mar.arraybuilder;
 //    import audio.dag;
 //
@@ -170,14 +170,14 @@ fn go() anyerror!void {
         midiInputDevice = audio.osmidi.MidiInputDevice.init();
 //        auto midiInput = from!"audio.windowsmidi".WindowsMidiGenerator();
 //        midiInput.initialize();
-        for (instruments.toSlice()) |instrument| {
+        for (instruments.items) |instrument| {
             try instrument.addInputNode(midiInputDevice.asMidiGeneratorNode());
 //                .enforce("failed to add midi device input node");
         }
         try midiInputDevice.startMidiDeviceInput(0); // just hardcode MIDI device 0 for now
     }
 
-    const renderThread = try std.Thread.spawn({}, audio.render.renderThreadEntry);
+    const renderThread = try std.Thread.spawn(audio.render.renderThreadEntry, {});
 
 
 //    {
@@ -192,8 +192,8 @@ fn go() anyerror!void {
 //    }
 //
     try audio.pckeyboard.startInputThread();
-    log("Press ESC to quit", .{});
-    flushLog();
+    audio.log.log("Press ESC to quit", .{});
+    audio.log.flushLog();
     audio.pckeyboard.joinInputThread();
 
     if (UseMidiInstrument) {

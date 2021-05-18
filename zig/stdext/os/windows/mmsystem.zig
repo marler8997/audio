@@ -92,29 +92,33 @@ pub extern "winmm" fn waveOutOpen(
     dwCallback: *const DWORD,
     dwCallbackInstance: ?*DWORD,
     fdwOpen: DWORD,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
 
 pub extern "winmm" fn waveOutClose(
     hwo: HWAVEOUT,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
 
 pub extern "winmm" fn waveOutPrepareHeader(
     hwo: HWAVEOUT,
     pwh: *const WAVEHDR,
     cbwh: UINT,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
 
 pub extern "winmm" fn waveOutUnprepareHeader(
     hwo: HWAVEOUT,
     pwh: *const WAVEHDR,
     cbwh: UINT,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
 
 pub extern "winmm" fn waveOutWrite(
     hwo: HWAVEOUT,
     pwh: *const WAVEHDR,
     cbwh: UINT,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
+
+
+pub extern "winmm" fn midiInGetNumDevs() callconv(WINAPI) UINT;
+pub extern "winmm" fn midiOutGetNumDevs() callconv(WINAPI) UINT;
 
 pub extern "winmm" fn midiInOpen(
     lphMidiIn: *HMIDIIN,
@@ -122,16 +126,16 @@ pub extern "winmm" fn midiInOpen(
     dwCallback: *const DWORD,
     dwCallbackInstance: *DWORD,
     dwFlags: DWORD,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
 
 pub extern "winmm" fn midiInClose(
     hMidiIn: HMIDIIN,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
 
 pub extern "winmm" fn midiInStart(
     hMidiIn: HMIDIIN,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;
 
 pub extern "winmm" fn midiInStop(
     hMidiIn: HMIDIIN,
-) callconv(.Stdcall) MMRESULT;
+) callconv(WINAPI) MMRESULT;

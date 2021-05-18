@@ -12,7 +12,7 @@ const builtin = @import("builtin");
 
 const windowsmidi = @import("./audio/windowsmidi.zig");
 const linuxmidi = @import("./audio/linuxmidi.zig");
-pub const osmidi = switch (builtin.os) {
+pub const osmidi = switch (builtin.os.tag) {
     .windows => windowsmidi,
     .linux => linuxmidi,
     else => struct {},
@@ -20,7 +20,7 @@ pub const osmidi = switch (builtin.os) {
 
 const windowsinput = @import("./audio/windowsinput.zig");
 const posixinput = @import("./audio/posixinput.zig");
-pub const osinput = switch (builtin.os) {
+pub const osinput = switch (builtin.os.tag) {
     .windows => windowsinput,
     else => posixinput,
 };

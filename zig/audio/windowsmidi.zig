@@ -1,3 +1,4 @@
+const std = @import("std");
 
 const stdext = @import("../stdext.zig");
 usingnamespace stdext.os.windows.mmsystem;
@@ -7,13 +8,14 @@ usingnamespace audio.log;
 
 //alias WindowsMidiGenerator = MidiGeneratorTemplate!MidiInputDevice;
 pub const MidiInputDevice = struct {
-    midiGeneratorTypeA: audio.dag.MidiGeneratorTypeA,
-    midiGeneratorTypeAImpl: audio.dag.MidiGeneratorTypeAImpl,
     const State = enum {
         initial,
         midiInOpened,
         started,
     };
+
+    midiGeneratorTypeA: audio.dag.MidiGeneratorTypeA,
+    midiGeneratorTypeAImpl: audio.dag.MidiGeneratorTypeAImpl,
     state: State,
     midiHandle: HMIDIIN,
     pub fn init() @This() {
@@ -29,7 +31,7 @@ pub const MidiInputDevice = struct {
         return &self.midiGeneratorTypeA.midiGenerator;
     }
     fn midiInputCallback(handle: HMIDIIN, msg: u32,
-        instance: usize, param1: *u32, param2: *u32) callconv(.Stdcall) void {
+        instance: usize, param1: *u32, param2: *u32) callconv(std.os.windows.WINAPI) void {
         var device = @intToPtr(*MidiInputDevice, instance);
         switch (msg) {
             MIM_OPEN => {
@@ -66,7 +68,7 @@ pub const MidiInputDevice = struct {
                         logError("Bad MIDI velocity 0x{x} the MSB is set", .{velocity});
                     } else {
                         const onOffString = if (noteType == NoteType.noteOff) "OFF" else "ON";
-                        logDebug("[MidiListenCallback] {} note {} {}, velocity={}",
+                        logDebug("[MidiListenCallback] {} note {} {s}, velocity={}",
                             .{timestamp, note, onOffString, velocity});
                         if (noteType == .noteOff) {
                             device.midiGeneratorTypeA.addMidiEvent(

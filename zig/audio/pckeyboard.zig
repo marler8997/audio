@@ -7,7 +7,7 @@ const audio = @import("../audio.zig");
 usingnamespace audio.log;
 
 const global = struct {
-    var inputThreadMutex = std.Mutex.init();
+    var inputThreadMutex = std.Thread.Mutex {};
     var inputThreadRunning = false;
     var inputThread : *std.Thread = undefined;
     //KeyHandler!void[256] keyHandlers;
@@ -187,7 +187,7 @@ pub fn startInputThread() !void {
 
     if (!global.inputThreadRunning)
     {
-        global.inputThread = try std.Thread.spawn({}, inputThreadEntry);
+        global.inputThread = try std.Thread.spawn(inputThreadEntry, {});
         global.inputThreadRunning = true;
     }
 }

@@ -8,6 +8,12 @@ pub fn build(b: *Builder) void {
     exe.install();
     ////exe.linkSystemLibrary("c");
 
+
+    const windows_midi = b.addExecutable("windows-midi", "tools" ++ std.fs.path.sep_str ++ "windows-midi.zig");
+    windows_midi.setBuildMode(mode);
+    windows_midi.install();
+    windows_midi.addPackagePath("stdext", "stdext.zig");
+
     const runCommand = exe.run();
     runCommand.step.dependOn(b.getInstallStep());
 

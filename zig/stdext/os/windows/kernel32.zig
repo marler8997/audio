@@ -7,10 +7,10 @@ pub extern "kernel32" fn CreateEventA(
     bManualReset: BOOL,
     bInitialState: BOOL,
     lpName: ?LPCSTR
-) callconv(.Stdcall) HANDLE;
+) callconv(WINAPI) HANDLE;
 
-pub extern "kernel32" fn ResetEvent(hEvent: HANDLE) callconv(.Stdcall) BOOL;
-pub extern "kernel32" fn SetEvent(hEvent: HANDLE) callconv(.Stdcall) BOOL;
+pub extern "kernel32" fn ResetEvent(hEvent: HANDLE) callconv(WINAPI) BOOL;
+pub extern "kernel32" fn SetEvent(hEvent: HANDLE) callconv(WINAPI) BOOL;
 
 pub const FOCUS_EVENT = 0x0010;
 pub const KEY_EVENT   = 0x0001;
@@ -44,14 +44,14 @@ pub const INPUT_RECORD = extern struct {
 pub extern "kernel32" fn GetConsoleMode(
     hConsoleHandle : HANDLE,
     lpMode: *DWORD
-) callconv(.Stdcall) BOOL;
+) callconv(WINAPI) BOOL;
 pub extern "kernel32" fn SetConsoleMode(
     hConsoleHandle : HANDLE,
     dwMode: DWORD
-) callconv(.Stdcall) BOOL;
+) callconv(WINAPI) BOOL;
 pub extern "kernel32" fn ReadConsoleInputA(
     hConsoleInput : HANDLE,
     lpBuffer: [*]INPUT_RECORD,
     nLength: DWORD,
     lpNumberOfEventsRead: *DWORD,
-) callconv(.Stdcall) BOOL;
+) callconv(WINAPI) BOOL;

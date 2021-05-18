@@ -13,7 +13,7 @@ const AudioGenerator = audio.dag.AudioGenerator;
 pub const global = struct {
     // Meant to lock access to the render node graph to keep nodes
     // or data inside it from being modified during a render.
-    pub var renderLock = std.Mutex.init();
+    pub var renderLock = std.Thread.Mutex { };
 
     // The generators connected directly to the audio backend
     var rootAudioGenerators: std.ArrayList(*AudioGenerator) = undefined;
@@ -122,16 +122,16 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
     //
 
     // TODO: which one is faster????
-    //stdext.mem.set(renderBuffer.toArray(), 0);
-    stdext.mem.secureZero(limitPointersToSlice(bufferStart, bufferLimit));
+    stdext.mem.set(limitPointersToSlice(bufferStart, bufferLimit), 0);
+    //stdext.mem.secureZero(limitPointersToSlice(bufferStart, bufferLimit));
 
     const locked = global.renderLock.acquire();
     defer locked.release();
     //logDebug("render");
-    for (global.rootAudioGenerators.toSlice()) |generator| {
+    for (global.rootAudioGenerators.items) |generator| {
         try generator.mix(generator, channels, bufferStart, bufferLimit);
     }
-    for (global.rootAudioGenerators.toSlice()) |generator| {
+    for (global.rootAudioGenerators.items) |generator| {
         try generator.renderFinished(generator, &global.mainOutputNode);
     }
 }

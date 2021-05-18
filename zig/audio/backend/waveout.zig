@@ -183,10 +183,10 @@ fn setupGlobalData() anyerror!void {
             }
             global.waveFormat.SubFormat          = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
         },
-        else => {
-            logError("waveout doesn't support the current render format", .{});
-            return error.RenderFormatError;
-        },
+        //else => {
+        //    logError("waveout doesn't support the current render format", .{});
+        //    return error.RenderFormatError;
+        //},
     }
 
     // Setup Buffers
@@ -206,7 +206,7 @@ fn setupGlobalData() anyerror!void {
 }
 
 pub fn waveOutCallback(waveout: HWAVEOUT, msg: UINT, instance: *DWORD,
-    param1: *DWORD, param2: *DWORD) callconv(.Stdcall) void {
+    param1: *DWORD, param2: *DWORD) callconv(WINAPI) void {
 
     if (msg == WOM_OPEN) {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_OPEN)");

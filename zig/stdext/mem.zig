@@ -1,9 +1,5 @@
 const std = @import("std");
 
-pub fn set(dest: var, value: var) void {
+pub fn set(dest: anytype, value: anytype) void {
     std.mem.set(@TypeOf(dest[0]), dest, value);
-}
-
-pub fn secureZero(s: var) void {
-    std.mem.secureZero(@TypeOf(s[0]), s);
 }

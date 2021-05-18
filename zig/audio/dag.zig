@@ -91,12 +91,12 @@ pub const MidiGeneratorTypeA = struct {
     fn getMidiEvents(base: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent {
         var self = @fieldParentPtr(@This(), "midiGenerator", base);
         //if (self.midiEvents.len > 0) logDebug("returning {} midi events", self.midiEvents.len);
-        return self.midiEvents.toSlice();
+        return self.midiEvents.items;
     }
     fn renderFinished(base: *MidiGenerator, instrument: *MidiInstrument) void {
         var self = @fieldParentPtr(@This(), "midiGenerator", base);
         // NOTE: I'm not sure I want this to re-allocate
-        self.midiEvents.shrink(0);
+        self.midiEvents.shrinkRetainingCapacity(0);
     }
 //    //
 //    // Input Device forwarding functions

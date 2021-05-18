@@ -5,6 +5,6 @@ pub fn dumpData(comptime prefix: []const u8, data: []u8) void {
         std.debug.warn(prefix ++ "[{}] = {}\n", index, data[index]);
     }
 }
-pub fn ptrData(data: var) []u8 {
+pub fn ptrData(data: anytype) []u8 {
     return @ptrCast([*]u8, data)[0 .. @sizeOf(@TypeOf(data.*))];
 }
