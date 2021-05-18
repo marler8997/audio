@@ -47,17 +47,12 @@ pub const MidiInputDevice = struct {
                 const timestamp = @intCast(u32, 0xffffffff & @ptrToInt(param2));
 
                 const category = status & 0xf0;
-                const NoteType = enum { notNote, noteOff, noteOn };
-                var noteType : NoteType = undefined;
-                if (category == audio.midi.MidiMessageCategory.noteOff) {
-                    noteType = NoteType.noteOff;
-                } else if (category == audio.midi.MidiMessageCategory.noteOn) {
-                    noteType = NoteType.noteOn;
-                } else {
-                    noteType = NoteType.notNote;
-                }
-
-                if (noteType != NoteType.notNote) {
+                const NoteType = enum { off, on };
+                if (@as(?NoteType,
+                    if (category == audio.midi.MidiMessageCategory.noteOff) NoteType.off
+                    else if (category == audio.midi.MidiMessageCategory.noteOn) NoteType.on
+                    else null
+                )) |note_type| {
                     const note     = HIBYTE(
                         LOWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
                     const velocity = LOBYTE(
@@ -68,105 +63,26 @@ pub const MidiInputDevice = struct {
                     } else if (velocity & 0x80 != 0) {
                         midilog.err("Bad MIDI velocity 0x{x} the MSB is set", .{velocity});
                     } else {
-                        const onOffString = if (noteType == NoteType.noteOff) "OFF" else "ON";
-                        midilog.debug("[MidiListenCallback] {} note {} {s}, velocity={}",
-                            .{timestamp, note, onOffString, velocity});
-                        if (noteType == .noteOff) {
-                            device.midiGeneratorTypeA.addMidiEvent(
-                                audio.midi.MidiEvent.makeNoteOff(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)))) catch |err| {
-                                    midilog.err("failed to add MIDI OFF event: {}", .{err});
-                            };
-                        } else {
-                            device.midiGeneratorTypeA.addMidiEvent(
-                                audio.midi.MidiEvent.makeNoteOn(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)), velocity)) catch |err| {
-                                    midilog.err("failed to add MIDI ON event: {}", .{err});
-                            };
+                        midilog.debug("[MidiListenCallback] {} note {} {}, velocity={}",
+                            .{timestamp, note, note_type, velocity});
+                        switch (note_type) {
+                            .off => {
+                                device.midiGeneratorTypeA.addMidiEvent(
+                                    audio.midi.MidiEvent.makeNoteOff(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)))) catch |err| {
+                                        midilog.err("failed to add MIDI OFF event: {}", .{err});
+                                };
+                            },
+                            .on => {
+                                device.midiGeneratorTypeA.addMidiEvent(
+                                    audio.midi.MidiEvent.makeNoteOn(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)), velocity)) catch |err| {
+                                        midilog.err("failed to add MIDI ON event: {}", .{err});
+                                };
+                            },
                         }
-                        //const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
-                        //    MidiEvent.makeNoteOff(timestamp, cast(MidiNote)note));
-                        //if (result.failed)
-                        //{
-                        //    midilog.err("failed to add MIDI OFF event: ", result);
-                        //}
                     }
                 } else {
                     midilog.debug("[MidiListenCallback] {} data status=0x{x}", .{timestamp, status});
                 }
-
-//        case MIM_DATA: {
-//            // param1 (low byte) = midi event
-//            // param2            = timestamp
-//            const status = MIDI_STATUS(param1);
-//            const category = status & 0xF0;
-//            if(category == MidiMsgCategory.noteOff)
-//            {
-//                const note     = HIBYTE(LOWORD(param1));
-//                const velocity = LOBYTE(HIWORD(param1));
-//                const timestamp = cast(size_t)param2;
-//
-//                if (note & 0x80)
-//                    midilog.err("Bad MIDI note 0x", note.formatHex, ", the MSB is set");
-//                else if (velocity & 0x80)
-//                    midilog.err("Bad MIDI velocity 0x", note.formatHex, ", the MSB is set");
-//                else
-//                {
-//                    //logDebug("[MidiListenCallback] note ", note, " OFF, velocity=", velocity, " timestamp=", timestamp);
-//                    const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
-//                        MidiEvent.makeNoteOff(timestamp, cast(MidiNote)note));
-//                    if (result.failed)
-//                    {
-//                        midilog.err("failed to add MIDI OFF event: ", result);
-//                    }
-//                }
-//            }
-//            else if(category == MidiMsgCategory.noteOn)
-//            {
-//                const note     = HIBYTE(LOWORD(param1));
-//                const velocity = LOBYTE(HIWORD(param1));
-//                const timestamp = cast(size_t)param2;
-//                //logDebug("[MidiListenCallback] note ", note, " ON,  velocity=", velocity, " timestamp=", timestamp);
-//                if (note & 0x80)
-//                    logError("Bad MIDI note 0x", note.formatHex, ", the MSB is set");
-//                else if (velocity & 0x80)
-//                    logError("Bad MIDI velocity 0x", note.formatHex, ", the MSB is set");
-//                else
-//                {
-//                    const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
-//                        MidiEvent.makeNoteOn(timestamp, cast(MidiNote)note, velocity));
-//                    if (result.failed)
-//                    {
-//                        logError("failed to add MIDI ON event: ", result);
-//                    }
-//                }
-//            }
-//            else if (category == MidiMsgCategory.control)
-//            {
-//                const number = HIBYTE(LOWORD(param1));
-//                const value  = LOBYTE(HIWORD(param1));
-//                const timestamp = cast(size_t)param2;
-//                if (number == MidiControlCode.sustainPedal)
-//                {
-//                    bool on = value >= 64;
-//                    //logDebug("[MidiListenCallback] sustain: ", on ? "ON" : "OFF");
-//                    const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
-//                        MidiEvent.makeSustainPedal(timestamp,on));
-//                    if (result.failed)
-//                    {
-//                        logError("failed to add MIDI event: ", result);
-//                    }
-//                }
-//                else
-//                {
-//                    //logDebug("[MidiListenCallback] control ", number, "=", value);
-//                }
-//            }
-//            else
-//            {
-//                logDebug("[MidiListenCallback] data, unknown category 0x", status.formatHex);
-//            }
-//            //printf("[MidiListenCallback] data (event=%d, timestampe=%d)\n",
-//            //(byte)param1, param2);
-//            break;
             },
 //        } case MIM_LONGDATA:
 //            logDebug("[MidiListenCallback] longdata");

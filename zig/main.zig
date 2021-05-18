@@ -166,8 +166,6 @@ fn go() !void {
     var midiInputDevice : audio.osmidi.MidiInputDevice = undefined;
     if (UseMidiInstrument) {
         midiInputDevice = audio.osmidi.MidiInputDevice.init();
-//        auto midiInput = from!"audio.windowsmidi".WindowsMidiGenerator();
-//        midiInput.initialize();
         for (instruments.items) |instrument| {
             try instrument.addInputNode(midiInputDevice.asMidiGeneratorNode());
 //                .enforce("failed to add midi device input node");
