@@ -4,7 +4,6 @@ const stdext = @import("stdext");
 usingnamespace stdext.limitarray;
 
 const audio = @import("../audio.zig");
-usingnamespace audio.log;
 usingnamespace audio.renderformat;
 const OutputNode = audio.dag.OutputNode;
 const AudioGenerator = audio.dag.AudioGenerator;
@@ -35,12 +34,12 @@ pub fn addRootAudioGenerator(generator: *AudioGenerator) !void {
 }
 
 pub fn renderThreadEntry(context: void) void {
-    logDebug("renderThread started!", .{});
+    std.log.debug("renderThread started!", .{});
     const result = renderThread2();
     if (result) {
-        log("renderThread is exiting with no error", .{});
+        std.log.info("renderThread is exiting with no error", .{});
     } else |err| {
-        logError("render thread failed with {}", .{err});
+        std.log.err("render thread failed with {}", .{err});
     }
 }
 
@@ -67,7 +66,7 @@ fn renderThread2() !void {
     //}
 
     const renderBufferSampleCount = audio.global.bufferSampleFrameCount * audio.global.channelCount;
-    logDebug("renderBufferSampleCount {}", .{renderBufferSampleCount});
+    std.log.debug("renderBufferSampleCount {}", .{renderBufferSampleCount});
     var renderBuffer = try audio.global.allocator.alloc(SamplePoint, renderBufferSampleCount);
     defer audio.global.allocator.free(renderBuffer);
 

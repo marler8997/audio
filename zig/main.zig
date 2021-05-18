@@ -2,13 +2,11 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 const audio = @import("./audio.zig");
-//usingnamespace audio.log;
 
 
 //import mar.from;
 //import mar.passfail;
 //
-//import audio.log;
 //static import audio.global;
 //static import audio.backend;
 //import audio.renderformat;
@@ -36,7 +34,7 @@ fn setupGlobalDefaults() anyerror!void {
     audio.global.channelCount = 2;
     //audio.global.sampleFramesPerSec = 44100;
     audio.global.sampleFramesPerSec = 48000;
-    audio.log.log("default set to {} channels at {} Hz", .{audio.global.channelCount, audio.global.sampleFramesPerSec});
+    std.log.info("default set to {} channels at {} Hz", .{audio.global.channelCount, audio.global.sampleFramesPerSec});
 
     audio.global.bufferSampleFrameCount = 0; // set to 0 to mean it's not set yet
 
@@ -52,10 +50,10 @@ fn finishGlobals() anyerror!void {
 
     if (audio.global.bufferSampleFrameCount != 0)
     {
-        std.debug.warn("audio backend set a buffer size for us to {}\n", .{audio.global.bufferSampleFrameCount});
+        std.log.info("audio backend set a buffer size for us to {}", .{audio.global.bufferSampleFrameCount});
         return;
     }
-    std.debug.warn("audio backend did not set a buffer size\n", .{});
+    std.log.info("audio backend did not set a buffer size", .{});
     //const inputDelayMillis = 2;
     //const inputDelayMillis = 9;
     //const inputDelayMillis = 10;
@@ -65,7 +63,7 @@ fn finishGlobals() anyerror!void {
     //const inputDelayMillis = 100;
     audio.global.bufferSampleFrameCount = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
     const inputDelayMillisU32 : u32 = inputDelayMillis; // workaround issue 557
-    std.debug.warn("bufferSampleFrameCount={} inputDelay={} ms\n", .{audio.global.bufferSampleFrameCount, inputDelayMillisU32});
+    std.log.info("bufferSampleFrameCount={} inputDelay={} ms", .{audio.global.bufferSampleFrameCount, inputDelayMillisU32});
 }
 //
 //
@@ -192,8 +190,7 @@ fn go() !void {
 //    }
 //
     try audio.pckeyboard.startInputThread();
-    audio.log.log("Press ESC to quit", .{});
-    audio.log.flushLog();
+    std.log.info("Press ESC to quit", .{});
     audio.pckeyboard.joinInputThread();
 
     if (UseMidiInstrument) {

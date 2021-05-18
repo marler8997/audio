@@ -4,8 +4,10 @@
 //import mar.mem : zero;
 //import mar.c : cstring;
 const std = @import("std");
+const audiooutlog = std.log.scoped(.audioout);
 
 const win32 = @import("win32");
+usingnamespace win32.system.diagnostics.debug;
 usingnamespace win32.system.system_services;
 usingnamespace win32.system.threading;
 usingnamespace win32.system.windows_programming;
@@ -16,7 +18,6 @@ const win32fix = @import("../win32fix.zig");
 const WAVE_MAPPER : u32 = 0xFFFFFFFF;
 
 const audio = @import("../../audio.zig");
-usingnamespace audio.log;
 usingnamespace audio.renderformat;
 
 const CustomWaveHeader = extern struct {
@@ -58,10 +59,10 @@ const LocalError  = error {
 
 fn startingRenderLoop() anyerror!void {
 
-    logDebug("waveout: startingRenderLoop", .{});
+    audiooutlog.debug("waveout: startingRenderLoop", .{});
     try setupGlobalData();
     const temp : usize = @sizeOf(WAVEFORMATEX);
-    //logDebug("@sizeOf(WAVEFORMATEX)={}", .{temp});
+    //audiooutlog.debug("@sizeOf(WAVEFORMATEX)={}", .{temp});
     //stdext.debug.dumpData("WAVEFORMATEX", stdext.debug.ptrData(&global.waveFormat));
     const result = waveOutOpen(&global.waveOut,
         WAVE_MAPPER,
@@ -72,14 +73,14 @@ fn startingRenderLoop() anyerror!void {
     if (result != MMSYSERR_NOERROR)
     {
         //printf("waveOutOpen failed (result=%d '%s')\n", .{result, getMMRESULTString(result)});
-        logError("waveOutOpen failed, result={}", .{result});
+        audiooutlog.err("waveOutOpen failed, result={}", .{result});
         return LocalError.WaveOutOpenFailed;
     }
 }
 fn stoppingRenderLoop() anyerror!void {
     const result = waveOutClose(global.waveOut);
     if (result != MMSYSERR_NOERROR) {
-        logError("waveOutClose failed, result={}", .{result});
+        audiooutlog.err("waveOutClose failed, result={}", .{result});
         return LocalError.WaveOutCloseFailed;
     }
 }
@@ -99,7 +100,7 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
 
     //if (audio.global.channelCount == 1)
     //{
-    //    logError("waveout writeBuffer channelCount 1 not impl");
+    //    audiooutlog.err("waveout writeBuffer channelCount 1 not impl");
     //    return passfail.fail;
     //}
     //else if (audio.global.channelCount == 2)
@@ -108,7 +109,7 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
     //}
     //else
     //{
-    //    logError("waveout writeBuffer channelCount ", audio.global.channelCount, " not impl");
+    //    audiooutlog.err("waveout writeBuffer channelCount ", audio.global.channelCount, " not impl");
     //    return passfail.fail;
     //}
 
@@ -117,20 +118,20 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
         const result = waveOutPrepareHeader(global.waveOut,
             &global.backBuffer.base, @sizeOf(@TypeOf(global.backBuffer.*)));
         if (result != MMSYSERR_NOERROR) {
-            logError("waveOutPrepareHeader failed, result={}", .{result});
+            audiooutlog.err("waveOutPrepareHeader failed, result={}", .{result});
             return LocalError.WaveOutPrepareHeaderFailed;
         }
     }
     if(0 == ResetEvent(global.backBuffer.freeEvent))
     {
-        logError("ResetEvent failed, e={}", .{std.os.windows.kernel32.GetLastError()});
+        audiooutlog.err("ResetEvent failed, e={}", .{std.os.windows.kernel32.GetLastError()});
         return error.Unexpected;
     }
     {
         const result = waveOutWrite(global.waveOut,
             &global.backBuffer.base, @sizeOf(@TypeOf(global.backBuffer.*)));
         if (result != MMSYSERR_NOERROR) {
-            logError("waveOutWrite failed, result={}", .{result});
+            audiooutlog.err("waveOutWrite failed, result={}", .{result});
             return LocalError.WaveOutWriteFailed;
         }
     }
@@ -141,7 +142,7 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
     switch (WaitForSingleObjectEx(global.frontBuffer.freeEvent, INFINITE, FALSE)) {
         WAIT_OBJECT_0 => {},
         else => |err| {
-            logError("WaitForSingleObjectEx failed, result={}, e={}", .{err, std.os.windows.kernel32.GetLastError()});
+            audiooutlog.err("WaitForSingleObjectEx failed, result={}, e={}", .{err, GetLastError()});
             return error.WaitForSingleObjectFailed;
         },
     }
@@ -150,7 +151,7 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
         const result = waveOutUnprepareHeader(global.waveOut,
             &global.frontBuffer.base, @sizeOf(@TypeOf(global.backBuffer.*)));
         if (result != MMSYSERR_NOERROR) {
-            logError("waveOutUnprepareHeader failed, result={}", .{result});
+            audiooutlog.err("waveOutUnprepareHeader failed, result={}", .{result});
             return LocalError.WaveOutUnprepareHeaderFailed;
         }
     }
@@ -184,13 +185,13 @@ fn setupGlobalData() anyerror!void {
             } else if (audio.global.channelCount == 2) {
                 global.waveFormat.dwChannelMask  = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
             } else {
-                logError("waveout channel count {} not implemented", .{audio.global.channelCount});
+                audiooutlog.err("waveout channel count {} not implemented", .{audio.global.channelCount});
                 return error.NotImplemented;
             }
             global.waveFormat.SubFormat          = CLSID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT.*;
         },
         //else => {
-        //    logError("waveout doesn't support the current render format", .{});
+        //    audiooutlog.err("waveout doesn't support the current render format", .{});
         //    return error.RenderFormatError;
         //},
     }
@@ -205,7 +206,7 @@ fn setupGlobalData() anyerror!void {
         waveHeader.base.lpData = @ptrCast([*:0]u8, buffer.ptr);
         waveHeader.freeEvent = CreateEventA(null, 1, 1, null);
         if (@ptrToInt(waveHeader.freeEvent) == 0) {
-            logError("CreateEventA failed, e={}", .{std.os.windows.kernel32.GetLastError()});
+            audiooutlog.err("CreateEventA failed, e={}", .{std.os.windows.kernel32.GetLastError()});
             return error.BadValue;
         }
     }
@@ -218,10 +219,10 @@ pub fn waveOutCallback(waveout: HWAVEOUT, msg: u32, instance: *u32,
 
     if (msg == MM_WOM_OPEN) {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_OPEN)");
-        logDebug("WOM_OPEN (instance={},param1={},param2={})", .{instance, param1, param2});
+        audiooutlog.debug("WOM_OPEN (instance={},param1={},param2={})", .{instance, param1, param2});
     } else if (msg == MM_WOM_CLOSE) {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_CLOSE)");
-        logDebug("WOM_CLOSE (instance={},param1={},param2={})", .{instance, param1, param2});
+        audiooutlog.debug("WOM_CLOSE (instance={},param1={},param2={})", .{instance, param1, param2});
     } else if (msg == MM_WOM_DONE) {
         ////logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_DONE)");
         //logDebug("WOM_DONE (instance={},param1={},param2={})", instance, param1, param2);
@@ -231,13 +232,12 @@ pub fn waveOutCallback(waveout: HWAVEOUT, msg: u32, instance: *u32,
         //header->dwBufferLength, header->data);
         //QueryPerformanceCounter(&header.setEventTime);
         if (0 == SetEvent(header.freeEvent)) {
-            logError("SetEvent on waveout buffer failed, this should cause waveout thread to hang", .{});
+            audiooutlog.err("SetEvent on waveout buffer failed, this should cause waveout thread to hang", .{});
         }
     } else {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, ")");
-        logDebug("WOM_? ({}) (instance={},param1={},param2={})", .{msg, instance, param1, param2});
+        audiooutlog.debug("WOM_? ({}) (instance={},param1={},param2={})", .{msg, instance, param1, param2});
     }
-    //flushDebug();
 }
 //
 //void dumpWaveFormat(WaveFormatEx* format)

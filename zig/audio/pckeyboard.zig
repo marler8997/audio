@@ -1,8 +1,9 @@
 const builtin = @import("builtin");
 const std = @import("std");
+const inputlog = std.log.scoped(.input);
 
 const audio = @import("../audio.zig");
-usingnamespace audio.log;
+
 
 const global = struct {
     var inputThreadMutex = std.Thread.Mutex {};
@@ -202,16 +203,16 @@ pub fn joinInputThread() void {
 }
 
 pub fn inputThreadEntry(context: void) void {
-    logDebug("inputThread started!", .{});
+    inputlog.debug("inputThread started!", .{});
     const result = inputThread2();
     if (result) {
-        log("inputThread is exiting with no error", .{});
+        inputlog.info("inputThread is exiting with no error", .{});
     } else |err| {
-        logError("inputThread failed with {}", .{err});
+        inputlog.err("inputThread failed with {}", .{err});
     }
 }
 fn inputThread2() !void {
-    logDebug("inputThreadEntry!", .{});
+    inputlog.debug("inputThreadEntry!", .{});
     var mode = try audio.osinput.ConsoleMode.setup();
     defer mode.restore();
 
@@ -225,7 +226,7 @@ fn inputThread2() !void {
                 //logDebug("KEY_EVENT code={} {}", code, if (down) "down" else "up");
 
                 if (code == audio.osinput.KEY_ESCAPE) {
-                    log("ESC key pressed", .{});
+                    inputlog.info("ESC key pressed", .{});
                     break :inputLoop;
                 }
                 // TODO: handle CTL-C
@@ -252,7 +253,7 @@ fn inputThread2() !void {
             //    }
 //
             } else {
-                logDebug("unhandled event type: {}", .{inputEvent.getEventType()});
+                inputlog.debug("unhandled event type: {}", .{inputEvent.getEventType()});
             }
         }
     }

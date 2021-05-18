@@ -2,7 +2,6 @@ const stdext = @import("stdext");
 usingnamespace stdext.limitarray;
 
 const audio = @import("../audio.zig");
-usingnamespace audio.log;
 usingnamespace audio.renderformat;
 const OutputNode = audio.dag.OutputNode;
 const AudioGenerator = audio.dag.AudioGenerator;

@@ -1,5 +1,4 @@
 const audio = @import("../../audio.zig");
-usingnamespace audio.log;
 usingnamespace audio.renderformat;
 
 pub const funcs = audio.backend.BackendFuncs {

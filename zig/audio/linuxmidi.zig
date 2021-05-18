@@ -1,5 +1,4 @@
 const audio = @import("../audio.zig");
-usingnamespace audio.log;
 
 pub const MidiInputDevice = struct {
     midiGenerator: audio.dag.MidiGenerator,

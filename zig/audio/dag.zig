@@ -4,7 +4,6 @@ const stdext = @import("stdext");
 usingnamespace stdext.limitarray;
 
 const audio = @import("../audio.zig");
-usingnamespace audio.log;
 usingnamespace audio.renderformat;
 usingnamespace audio.midi;
 

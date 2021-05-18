@@ -2,8 +2,6 @@
 //
 //import mar.passfail;
 //
-//import audio.log;
-//
 const audio = @import("../../audio.zig");
 
 //enum SampleKind { int_, float_ }

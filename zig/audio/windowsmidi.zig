@@ -1,7 +1,7 @@
 const std = @import("std");
+const midilog = std.log.scoped(.midi);
 
 const audio = @import("../audio.zig");
-usingnamespace audio.log;
 
 const win32 = @import("win32");
 usingnamespace win32.media.multimedia;
@@ -36,10 +36,10 @@ pub const MidiInputDevice = struct {
         var device = @intToPtr(*MidiInputDevice, instance);
         switch (msg) {
             MM_MIM_OPEN => {
-                logDebug("[MidiListenCallback] open", .{});
+                midilog.debug("[MidiListenCallback] open", .{});
             },
             MM_MIM_CLOSE => {
-                logDebug("[MidiListenCallback] close", .{});
+                midilog.debug("[MidiListenCallback] close", .{});
             },
             MM_MIM_DATA => {
                 const status = LOBYTE(
@@ -64,33 +64,33 @@ pub const MidiInputDevice = struct {
                         HIWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
 
                     if (note & 0x80 != 0) {
-                        logError("Bad MIDI note 0x{x} the MSB is set", .{note});
+                        midilog.err("Bad MIDI note 0x{x} the MSB is set", .{note});
                     } else if (velocity & 0x80 != 0) {
-                        logError("Bad MIDI velocity 0x{x} the MSB is set", .{velocity});
+                        midilog.err("Bad MIDI velocity 0x{x} the MSB is set", .{velocity});
                     } else {
                         const onOffString = if (noteType == NoteType.noteOff) "OFF" else "ON";
-                        logDebug("[MidiListenCallback] {} note {} {s}, velocity={}",
+                        midilog.debug("[MidiListenCallback] {} note {} {s}, velocity={}",
                             .{timestamp, note, onOffString, velocity});
                         if (noteType == .noteOff) {
                             device.midiGeneratorTypeA.addMidiEvent(
                                 audio.midi.MidiEvent.makeNoteOff(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)))) catch |err| {
-                                    logError("failed to add MIDI OFF event: {}", .{err});
+                                    midilog.err("failed to add MIDI OFF event: {}", .{err});
                             };
                         } else {
                             device.midiGeneratorTypeA.addMidiEvent(
                                 audio.midi.MidiEvent.makeNoteOn(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)), velocity)) catch |err| {
-                                    logError("failed to add MIDI ON event: {}", .{err});
+                                    midilog.err("failed to add MIDI ON event: {}", .{err});
                             };
                         }
                         //const result = (cast(WindowsMidiGenerator*)instance).tryAddMidiEvent(
                         //    MidiEvent.makeNoteOff(timestamp, cast(MidiNote)note));
                         //if (result.failed)
                         //{
-                        //    logError("failed to add MIDI OFF event: ", result);
+                        //    midilog.err("failed to add MIDI OFF event: ", result);
                         //}
                     }
                 } else {
-                    logDebug("[MidiListenCallback] {} data status=0x{x}", .{timestamp, status});
+                    midilog.debug("[MidiListenCallback] {} data status=0x{x}", .{timestamp, status});
                 }
 
 //        case MIM_DATA: {
@@ -105,9 +105,9 @@ pub const MidiInputDevice = struct {
 //                const timestamp = cast(size_t)param2;
 //
 //                if (note & 0x80)
-//                    logError("Bad MIDI note 0x", note.formatHex, ", the MSB is set");
+//                    midilog.err("Bad MIDI note 0x", note.formatHex, ", the MSB is set");
 //                else if (velocity & 0x80)
-//                    logError("Bad MIDI velocity 0x", note.formatHex, ", the MSB is set");
+//                    midilog.err("Bad MIDI velocity 0x", note.formatHex, ", the MSB is set");
 //                else
 //                {
 //                    //logDebug("[MidiListenCallback] note ", note, " OFF, velocity=", velocity, " timestamp=", timestamp);
@@ -115,7 +115,7 @@ pub const MidiInputDevice = struct {
 //                        MidiEvent.makeNoteOff(timestamp, cast(MidiNote)note));
 //                    if (result.failed)
 //                    {
-//                        logError("failed to add MIDI OFF event: ", result);
+//                        midilog.err("failed to add MIDI OFF event: ", result);
 //                    }
 //                }
 //            }
@@ -181,10 +181,9 @@ pub const MidiInputDevice = struct {
 //            logDebug("[MidiListenCallback] moredata");
 //            break;
             else => {
-                logDebug("[MidiListenCallback] UNHANDLED msg={}", .{msg});
+                midilog.debug("[MidiListenCallback] UNHANDLED msg={}", .{msg});
             },
         }
-//        flushDebug();
     }
 
     //static passfail startMidiDeviceInput(WindowsMidiGenerator* node, uint midiDeviceID) {
@@ -197,7 +196,7 @@ pub const MidiInputDevice = struct {
                 @ptrToInt(midiInputCallback),
                 @ptrToInt(device), CALLBACK_FUNCTION);
             if (result != MMSYSERR_NOERROR) {
-                logError("midiInOpen failed, result={}", .{result});
+                midilog.err("midiInOpen failed, result={}", .{result});
                 return error.Unexpected;
             }
             device.state = State.midiInOpened;
@@ -205,7 +204,7 @@ pub const MidiInputDevice = struct {
         if (device.state == State.midiInOpened) {
             const result = midiInStart(device.midiHandle);
             if (result != MMSYSERR_NOERROR) {
-                logError("midiInStart failed, result={}", .{result});
+                midilog.err("midiInStart failed, result={}", .{result});
                 return error.Unexpected;
             }
             device.state = State.started;
@@ -214,11 +213,11 @@ pub const MidiInputDevice = struct {
 
     //static passfail stopMidiDeviceInput(WindowsMidiGenerator* node) {
     pub fn stopMidiDeviceInput(device: *MidiInputDevice) !void {
-        logDebug("stopMidiInputDevice", .{});
+        midilog.info("stopMidiInputDevice", .{});
         if (device.state == State.started) {
             const result = midiInStop(device.midiHandle);
             if (result != MMSYSERR_NOERROR) {
-                logError("midiInStop failed, result={}", .{result});
+                midilog.err("midiInStop failed, result={}", .{result});
                 return error.Unexpected;
             }
             device.state = State.midiInOpened;
@@ -226,7 +225,7 @@ pub const MidiInputDevice = struct {
         if (device.state == State.midiInOpened) {
             const result = midiInClose(device.midiHandle);
             if (result != MMSYSERR_NOERROR) {
-                logError("midiInClose failed, result={}", .{result});
+                midilog.err("midiInClose failed, result={}", .{result});
                 return error.Unexpected;
             }
             device.state = State.initial;

@@ -1,5 +1,5 @@
 const std = @import("std");
-//usingnamespace std.os.windows;
+const inputlog = std.log.scoped(.input);
 
 const win32 = @import("win32");
 usingnamespace win32.system.diagnostics.debug;
@@ -8,7 +8,7 @@ usingnamespace win32.ui.windows_and_messaging;
 const win32fix = @import("win32fix.zig");
 
 const audio = @import("../audio.zig");
-usingnamespace audio.log;
+
 
 pub const KEY_ESCAPE = VK_ESCAPE;
 
@@ -20,7 +20,7 @@ pub const ConsoleMode = struct {
         var mode : ConsoleMode = undefined;
         if(0 == GetConsoleMode(stdin.handle, &mode.oldValue))
         {
-            logError("Error: GetConsoleMode failed, e={}", .{GetLastError()});
+            inputlog.err("Error: GetConsoleMode failed, e={}", .{GetLastError()});
             return error.Unexpected;
         }
         var newMode = mode.oldValue;
@@ -30,11 +30,11 @@ pub const ConsoleMode = struct {
             | @enumToInt(ENABLE_LINE_INPUT)       // disable line input, we want characters immediately
             | @enumToInt(ENABLE_PROCESSED_INPUT); // we'll handle CTL-C so we can cleanup and reset the console mode
         newMode = @intToEnum(CONSOLE_MODE, @enumToInt(newMode) & ~flagsToDisable);
-        log("Current console mode 0x{x}, setting to 0x{x}", .{mode.oldValue, newMode});
+        inputlog.info("Current console mode 0x{x}, setting to 0x{x}", .{mode.oldValue, newMode});
 
         if(0 == SetConsoleMode(stdin.handle, newMode))
         {
-            logError("Error: SetConsoleMode failed, e={}", .{GetLastError()});
+            inputlog.err("Error: SetConsoleMode failed, e={}", .{GetLastError()});
             return error.Unexpected;
         }
         return mode;
@@ -42,7 +42,7 @@ pub const ConsoleMode = struct {
     pub fn restore(self: *ConsoleMode) void {
         var stdin = std.io.getStdIn();
         if (0 == SetConsoleMode(stdin.handle, self.oldValue)) {
-            logError("SetConsoleMode failed, e={}", .{GetLastError()});
+            inputlog.err("SetConsoleMode failed, e={}", .{GetLastError()});
             //return error.Unexpected;
         }
     }
@@ -63,10 +63,10 @@ pub fn InputEvents(comptime maxSize: comptime_int) type {
             if(0 == ReadConsoleInputA(
                 stdin.handle, @ptrCast([*]INPUT_RECORD, &self.buffer[0]), maxSize, &inputCount))
             {
-                logError("Error: ReadConsoleInput failed, e={}", .{GetLastError()});
+                inputlog.err("Error: ReadConsoleInput failed, e={}", .{GetLastError()});
                 return error.Unexpected;
             }
-            logDebug("got {} input events!", .{inputCount});
+            inputlog.debug("got {} input events!", .{inputCount});
             return self.buffer[0 .. inputCount];
         }
     };

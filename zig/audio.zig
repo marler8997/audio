@@ -1,4 +1,3 @@
-pub const log = @import("./audio/log.zig");
 pub const global = @import("./audio/global.zig");
 pub const renderformat = @import("./audio/renderformat.zig");
 pub const backend = @import("./audio/backend.zig");
