@@ -4,13 +4,16 @@
 //import mar.mem : zero;
 //import mar.c : cstring;
 const std = @import("std");
-usingnamespace std.os.windows;
 
-const stdext = @import("../../stdext.zig");
-usingnamespace stdext.os.windows.mmeapi;
-usingnamespace stdext.os.windows.mmreg;
-usingnamespace stdext.os.windows.mmsystem;
-usingnamespace stdext.os.windows.kernel32;
+const win32 = @import("win32");
+usingnamespace win32.system.system_services;
+usingnamespace win32.system.threading;
+usingnamespace win32.system.windows_programming;
+usingnamespace win32.media.multimedia;
+usingnamespace win32.media.audio.core_audio;
+const win32fix = @import("../win32fix.zig");
+// this constant is missing from win32: https://github.com/microsoft/win32metadata/issues/482
+const WAVE_MAPPER : u32 = 0xFFFFFFFF;
 
 const audio = @import("../../audio.zig");
 usingnamespace audio.log;
@@ -25,7 +28,7 @@ const CustomWaveHeader = extern struct {
 
 const global = struct {
     var waveOut: HWAVEOUT = undefined;
-    var waveFormat: WAVEFORMATEXTENSIBLE = undefined;
+    var waveFormat: win32fix.WAVEFORMATEXTENSIBLE = undefined;
     var waveHeaders: [2]CustomWaveHeader = undefined;
     var frontBuffer: *CustomWaveHeader = undefined;
     var backBuffer: *CustomWaveHeader = undefined;
@@ -63,8 +66,8 @@ fn startingRenderLoop() anyerror!void {
     const result = waveOutOpen(&global.waveOut,
         WAVE_MAPPER,
         &global.waveFormat.Format,
-        @ptrCast(*const DWORD, waveOutCallback),
-        null,
+        @ptrToInt(waveOutCallback),
+        0,
         CALLBACK_FUNCTION);
     if (result != MMSYSERR_NOERROR)
     {
@@ -135,10 +138,13 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
     // Wait for the front buffer, this delays the next render so it doesn't happen
     // too soon.
     //logDebug("waiting for play buffer...");
-    WaitForSingleObjectEx(global.frontBuffer.freeEvent, INFINITE, false) catch |err| {
-        logError("WaitForSingleObjectEx failed, result={}, e={}", .{err, std.os.windows.kernel32.GetLastError()});
-        return err;
-    };
+    switch (WaitForSingleObjectEx(global.frontBuffer.freeEvent, INFINITE, FALSE)) {
+        WAIT_OBJECT_0 => {},
+        else => |err| {
+            logError("WaitForSingleObjectEx failed, result={}, e={}", .{err, std.os.windows.kernel32.GetLastError()});
+            return error.WaitForSingleObjectFailed;
+        },
+    }
     // TODO: is unprepare necessary with no backbuffer?
     {
         const result = waveOutUnprepareHeader(global.waveOut,
@@ -181,7 +187,7 @@ fn setupGlobalData() anyerror!void {
                 logError("waveout channel count {} not implemented", .{audio.global.channelCount});
                 return error.NotImplemented;
             }
-            global.waveFormat.SubFormat          = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+            global.waveFormat.SubFormat          = CLSID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT.*;
         },
         //else => {
         //    logError("waveout doesn't support the current render format", .{});
@@ -194,7 +200,9 @@ fn setupGlobalData() anyerror!void {
     for (global.waveHeaders) |*waveHeader| {
         waveHeader.base.dwBufferLength = global.playBufferSize;
         var buffer = try audio.global.allocator.alloc(SamplePoint, global.playBufferSize);
-        waveHeader.base.lpData = @ptrCast([*]u8, buffer.ptr);
+        // https://github.com/microsoft/win32metadata/issues/483
+        //waveHeader.base.lpData = @ptrCast([*]u8, buffer.ptr);
+        waveHeader.base.lpData = @ptrCast([*:0]u8, buffer.ptr);
         waveHeader.freeEvent = CreateEventA(null, 1, 1, null);
         if (@ptrToInt(waveHeader.freeEvent) == 0) {
             logError("CreateEventA failed, e={}", .{std.os.windows.kernel32.GetLastError()});
@@ -205,16 +213,16 @@ fn setupGlobalData() anyerror!void {
     global.backBuffer = &global.waveHeaders[1];
 }
 
-pub fn waveOutCallback(waveout: HWAVEOUT, msg: UINT, instance: *DWORD,
-    param1: *DWORD, param2: *DWORD) callconv(WINAPI) void {
+pub fn waveOutCallback(waveout: HWAVEOUT, msg: u32, instance: *u32,
+    param1: *u32, param2: *u32) callconv(std.os.windows.WINAPI) void {
 
-    if (msg == WOM_OPEN) {
+    if (msg == MM_WOM_OPEN) {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_OPEN)");
         logDebug("WOM_OPEN (instance={},param1={},param2={})", .{instance, param1, param2});
-    } else if (msg == WOM_CLOSE) {
+    } else if (msg == MM_WOM_CLOSE) {
         //logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_CLOSE)");
         logDebug("WOM_CLOSE (instance={},param1={},param2={})", .{instance, param1, param2});
-    } else if (msg == WOM_DONE) {
+    } else if (msg == MM_WOM_DONE) {
         ////logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_DONE)");
         //logDebug("WOM_DONE (instance={},param1={},param2={})", instance, param1, param2);
         const header = @fieldParentPtr(CustomWaveHeader, "base",

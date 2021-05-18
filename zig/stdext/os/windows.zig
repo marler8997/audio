@@ -3,10 +3,6 @@ pub const kernel32 = @import("./windows/kernel32.zig");
 pub const consoleapi = @import("./windows/consoleapi.zig");
 pub const winuser = @import("./windows/winuser.zig");
 
-pub const mmeapi = @import("./windows/mmeapi.zig");
-pub const mmreg = @import("./windows/mmreg.zig");
-pub const mmsystem = @import("./windows/mmsystem.zig");
-
 //
 //
 //

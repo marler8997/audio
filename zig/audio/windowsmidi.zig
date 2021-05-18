@@ -1,10 +1,11 @@
 const std = @import("std");
 
-const stdext = @import("../stdext.zig");
-usingnamespace stdext.os.windows.mmsystem;
-
 const audio = @import("../audio.zig");
 usingnamespace audio.log;
+
+const win32 = @import("win32");
+usingnamespace win32.media.multimedia;
+usingnamespace @import("win32missing.zig");
 
 //alias WindowsMidiGenerator = MidiGeneratorTemplate!MidiInputDevice;
 pub const MidiInputDevice = struct {
@@ -34,14 +35,14 @@ pub const MidiInputDevice = struct {
         instance: usize, param1: *u32, param2: *u32) callconv(std.os.windows.WINAPI) void {
         var device = @intToPtr(*MidiInputDevice, instance);
         switch (msg) {
-            MIM_OPEN => {
+            MM_MIM_OPEN => {
                 logDebug("[MidiListenCallback] open", .{});
             },
-            MIM_CLOSE => {
+            MM_MIM_CLOSE => {
                 logDebug("[MidiListenCallback] close", .{});
             },
-            MIM_DATA => {
-                const status = stdext.os.windows.LOBYTE(
+            MM_MIM_DATA => {
+                const status = LOBYTE(
                     @intCast(u16, 0xffff & @ptrToInt(param1)));
                 const timestamp = @intCast(u32, 0xffffffff & @ptrToInt(param2));
 
@@ -57,10 +58,10 @@ pub const MidiInputDevice = struct {
                 }
 
                 if (noteType != NoteType.notNote) {
-                    const note     = stdext.os.windows.HIBYTE(
-                        stdext.os.windows.LOWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
-                    const velocity = stdext.os.windows.LOBYTE(
-                        stdext.os.windows.HIWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
+                    const note     = HIBYTE(
+                        LOWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
+                    const velocity = LOBYTE(
+                        HIWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
 
                     if (note & 0x80 != 0) {
                         logError("Bad MIDI note 0x{x} the MSB is set", .{note});
@@ -193,8 +194,8 @@ pub const MidiInputDevice = struct {
 
         if (device.state == State.initial) {
             const result = midiInOpen(&device.midiHandle, midiDeviceID,
-                @ptrCast(*const u32, midiInputCallback),
-                @ptrCast(* u32, device), CALLBACK_FUNCTION);
+                @ptrToInt(midiInputCallback),
+                @ptrToInt(device), CALLBACK_FUNCTION);
             if (result != MMSYSERR_NOERROR) {
                 logError("midiInOpen failed, result={}", .{result});
                 return error.Unexpected;

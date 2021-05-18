@@ -1,12 +1,12 @@
 const std = @import("std");
-const stdext = @import("stdext");
+const win32 = @import("win32");
 
-const mmsystem = stdext.os.windows.mmsystem;
+usingnamespace win32.media.multimedia;
 
 pub fn main() !void {
-    const in_num_devs = mmsystem.midiInGetNumDevs();
+    const in_num_devs = midiInGetNumDevs();
     std.log.info("midiInGetNumDevs={}", .{in_num_devs});
 
-    const out_num_devs = mmsystem.midiOutGetNumDevs();
+    const out_num_devs = midiOutGetNumDevs();
     std.log.info("midiOutGetNumDevs={}", .{out_num_devs});
 }
