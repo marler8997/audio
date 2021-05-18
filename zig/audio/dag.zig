@@ -210,7 +210,7 @@ pub const MidiGeneratorTypeA = struct {
 //}
 
 const MidiInstrumentTypeAImpl = struct {
-    newNote: fn(self: *MidiInstrumentTypeAImpl) void,
+    newNote: fn(self: *MidiInstrumentTypeAImpl) void,//, event: *MidiEvent, state: *NoteState) void,
     reattackNote: fn(self: *MidiInstrumentTypeAImpl) void,
     renderNote: fn(self: *MidiInstrumentTypeAImpl) void,
 };
@@ -232,6 +232,9 @@ const SawOscillatorMidiInstrumentTypeA = struct {
     //import audio.midi : MidiNote, defaultFreq;
 
     midiInstrumentTypeAImpl: MidiInstrumentTypeAImpl,
+    next_sample_point: f32,
+    increment: f32,
+
     //alias InstrumentData = OscillatorInstrumentData;
     pub fn init() @This() {
         return @This() {
@@ -240,6 +243,8 @@ const SawOscillatorMidiInstrumentTypeA = struct {
                 .reattackNote = reattackNote,
                 .renderNote = renderNote,
             },
+            .next_sample_point = 0, // TODO: undefined?
+            .increment = 0, // TODO: undefined?
         };
     }
     //struct NoteState
@@ -248,7 +253,11 @@ const SawOscillatorMidiInstrumentTypeA = struct {
     //    float nextSamplePoint;
     //    float increment;
     //}
-    fn newNote(base: *MidiInstrumentTypeAImpl) void { }
+    fn newNote(base: *MidiInstrumentTypeAImpl) void {//, event: *MidiEvent) void {
+        //const self = @fieldParentPtr(SawOscillatorMidiInstrumentTypeA, "midiInstrumentTypeAImpl", base);
+        //self.next_sample_point = 0;
+        //self.increment = audio.oscillators.sawFrequencyToIncrement(defaultFreq[event.noteOn.note]);
+    }
     //static void newNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     //{
     //    state.nextSamplePoint = 0;
@@ -510,6 +519,10 @@ const SawOscillatorMidiInstrumentTypeA = struct {
 
 
 //struct MidiInstrumentTypeA(Renderer)
+//const MidiInstrumentTypeA = struct {
+//fn MidiInstrumentTypeA(comptime Renderer: type) type { return struct {
+//};}
+
 const MidiInstrumentTypeA = struct {
 
 //    mixin InheritBaseTemplate!MidiInstrument;

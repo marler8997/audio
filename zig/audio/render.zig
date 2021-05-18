@@ -133,7 +133,30 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
     for (global.rootAudioGenerators.items) |generator| {
         try generator.renderFinished(generator, &global.mainOutputNode);
     }
+
+    {
+        var mix = Render2.Mix {
+            .channels = channels,
+            .buffer_start = bufferStart,
+            .buffer_limit = bufferLimit,
+        };
+        Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, &mix);
+    }
 }
+
+const renderv2 = @import("renderv2.zig");
+const Render2 = renderv2.Template(renderv2.RenderFormatFloat32);
+//var global_render2_thing = Render2.singlestep.Saw {
+//    .next_sample = 0,
+//    .increment = 0.005,
+//};
+var global_render2_thing = Render2.singlestep.Volume(Render2.singlestep.Saw) {
+    .volume = 0.1,
+    .forward = .{
+        .next_sample = 0,
+        .increment = 0.01,
+    },
+};
 
 pub fn addToEachChannel(channels: []u8, buffer: [*]SamplePoint, value: SamplePoint) void {
     for (channels) |channel| {

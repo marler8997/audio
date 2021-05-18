@@ -73,7 +73,7 @@ const UseMidiInstrument = true;
 ////version = PCKeyboardStartWithC4;
 //
 ////version = SinWave;
-const SawWave = true;
+const SawWave = false;
 //version = GrandPiano;
 //
 ////version = ValhallaReverb;
