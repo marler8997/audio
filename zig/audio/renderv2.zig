@@ -1,4 +1,5 @@
 const std = @import("std");
+const audio = @import("../audio.zig");
 
 // TODO: move this
 pub fn isValidCall(func: anytype, args: anytype) bool {
@@ -37,6 +38,12 @@ pub const RenderFormatFloat32 = struct {
     }
     pub fn scaleSample(sample: Sample, scale: f32) Sample {
         return sample * scale;
+    }
+    pub fn intToSample(int: anytype) f32 {
+        switch (@TypeOf(int)) {
+            i32, u32 => return @intToFloat(f32, int),
+            else => @compileError("unsupported int: " ++ @typeName(@TypeOf(int))),
+        }
     }
 };
 
@@ -81,19 +88,86 @@ pub fn Template(comptime Format: type) type { return struct {
             pub fn init() @This() {
                 return .{ .next_sample = 0, .increment = 0 };
             }
+            pub fn freqToIncrement(frequency: f32) Sample {
+                return frequency / Format.intToSample(audio.global.sampleFramesPerSec);
+            }
+            pub fn setFreq(self: *@This(), freq: f32) void {
+                self.increment = freqToIncrement(freq);
+            }
             pub fn renderOne(self: *@This()) Sample {
                 const sample = self.next_sample;
                 self.next_sample = Format.addPositiveWithWrap(sample, self.increment);
                 return sample;
             }
         };
-        pub fn Volume(comptime T: type) type { return struct {
-            forward: T,
+        pub fn Volume(comptime Renderer: type) type { return struct {
+            renderer: Renderer,
             volume: f32,
             pub fn renderOne(self: *@This()) Sample {
-                return Format.scaleSample(self.forward.renderOne(), self.volume);
+                return Format.scaleSample(self.renderer.renderOne(), self.volume);
             }
         };}
+        pub const SawFreqChanger = struct {
+            saw: Saw,
+
+            event_sample_time: usize,
+            event_tick: usize,
+
+            note_start: audio.midi.MidiNote,
+            note_end: audio.midi.MidiNote,
+            note_inc: u7,
+            note: audio.midi.MidiNote,
+
+            pub const InitOptions = struct {
+                event_sample_time: usize,
+                note_start: audio.midi.MidiNote,
+                note_end: audio.midi.MidiNote,
+                note_inc: u7,
+            };
+            pub fn init(saw: Saw, opt: InitOptions) SawFreqChanger {
+                return .{
+                    .saw = saw,
+
+                    .event_sample_time = opt.event_sample_time,
+                    .event_tick = 0,
+
+                    .note_start = opt.note_start,
+                    .note_end = opt.note_end,
+                    .note_inc = opt.note_inc,
+                    .note = opt.note_start
+                };
+            }
+
+            pub fn renderOne(self: *@This()) Sample {
+                if (self.event_tick == self.event_sample_time) {
+                    self.event_tick = 0;
+
+                    const next_note: u8 = @enumToInt(self.note) + self.note_inc;
+                    if (next_note >= @enumToInt(self.note_end)) {
+                        self.note = self.note_start;
+                    } else {
+                        self.note = @intToEnum(audio.midi.MidiNote, @intCast(u7, next_note));
+                    }
+                    self.saw.setFreq(audio.midi.getStdFreq(self.note));
+                } else {
+                    self.event_tick += 1;
+                }
+
+                return self.saw.renderOne();
+            }
+        };
+        //pub fn Automation(comptime Renderer: type, comptime Automater: type) type { return struct {
+        //    renderer: Renderer,
+        //    automater: Automater,
+        //    pub fn renderOne(self: *@This()) Sample {
+        //        self.automater.automate(&self.renderer);
+        //        return self.renderer.renderOne();
+        //    }
+        //};}
+        //pub const Midi(comptime T: type) type { return struct {
+        //    voices: []T,
+        //
+        //};}
     };
 
     pub fn renderSingleStepGenerator(comptime T: type, generator: *T, out: *Mix) void {
@@ -109,18 +183,8 @@ pub fn Template(comptime Format: type) type { return struct {
             sample.add(renderOneFn(context));
         }
     }
-    
-    pub fn SingleStepTo(comptime RenderOne: type) type { return struct {
-        render_one: RenderOne,
-        pub fn render(self: *@This(), out: *Mix) void {
-            var it = out.sampleIterator();
-            while (it.next()) |sample| {
-                sample.add(self.next_sample);
-                self.next_sample = Render.addPositiveWithWrap(self.next_sample, self.increment);
-            }
-        }
-    };}
 };}
+
 
 test "saw" {
     const S = Template(RenderFormatFloat32);

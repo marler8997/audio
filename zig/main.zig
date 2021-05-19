@@ -67,7 +67,7 @@ fn finishGlobals() anyerror!void {
 }
 //
 //
-const SingleSawTone = true;
+const SingleSawTone = false;
 const UseMidiInstrument = true;
 //version = UsePCKeyboard;
 ////version = PCKeyboardStartWithC4;

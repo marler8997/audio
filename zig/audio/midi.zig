@@ -1,5 +1,5 @@
 
-pub const MidiNote = enum {
+pub const MidiNote = enum(u7) {
     none = 0,
 
     anegative1 = 9,

@@ -89,6 +89,12 @@ fn renderThread2() !void {
 //version = DebugDumpRender;
 fn renderLoop(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void {
 
+    // Temporary one-time setup
+    global_render2_thing.renderer.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.a4));
+    global_render2_thing2.renderer.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
+    global_render2_thing3.renderer.saw.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
+    global_render2_thing3.renderer.event_sample_time = @floatToInt(usize, @intToFloat(f32, audio.global.sampleFramesPerSec) * 0.3);
+
     try render(channels, bufferStart, bufferLimit);
     //version (DebugDumpRender)
     //{
@@ -141,6 +147,8 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
             .buffer_limit = bufferLimit,
         };
         Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, &mix);
+        Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, &mix);
+        Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, &mix);
     }
 }
 
@@ -151,12 +159,33 @@ const Render2 = renderv2.Template(renderv2.RenderFormatFloat32);
 //    .increment = 0.005,
 //};
 var global_render2_thing = Render2.singlestep.Volume(Render2.singlestep.Saw) {
-    .volume = 0.1,
-    .forward = .{
+    .volume = 0.02,
+    .renderer = .{
         .next_sample = 0,
-        .increment = 0.01,
+        .increment = 0,
     },
 };
+var global_render2_thing2 = Render2.singlestep.Volume(Render2.singlestep.Saw) {
+    .volume = 0.02,
+    .renderer = .{
+        .next_sample = 0,
+        .increment = 0,
+    },
+};
+
+var global_render2_thing3 = Render2.singlestep.Volume(Render2.singlestep.SawFreqChanger) {
+    .volume = 0.02,
+    .renderer = Render2.singlestep.SawFreqChanger.init(.{
+        .next_sample = 0,
+        .increment = 0,
+    }, Render2.singlestep.SawFreqChanger.InitOptions {
+        .event_sample_time = 0,
+        .note_start = audio.midi.MidiNote.a2,
+        .note_end = audio.midi.MidiNote.a7,
+        .note_inc = 3,
+    }),
+};
+
 
 pub fn addToEachChannel(channels: []u8, buffer: [*]SamplePoint, value: SamplePoint) void {
     for (channels) |channel| {
