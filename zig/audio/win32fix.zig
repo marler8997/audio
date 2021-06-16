@@ -1,4 +1,5 @@
 const win32 = @import("win32");
+usingnamespace win32.foundation;
 usingnamespace win32.system.system_services;
 
 // This type is not generated in zigwin32 yet because it uses a nested type

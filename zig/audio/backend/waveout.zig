@@ -7,6 +7,8 @@ const std = @import("std");
 const audiooutlog = std.log.scoped(.audioout);
 
 const win32 = @import("win32");
+usingnamespace win32.zig;
+usingnamespace win32.foundation;
 usingnamespace win32.system.diagnostics.debug;
 usingnamespace win32.system.system_services;
 usingnamespace win32.system.threading;
@@ -14,8 +16,6 @@ usingnamespace win32.system.windows_programming;
 usingnamespace win32.media.multimedia;
 usingnamespace win32.media.audio.core_audio;
 const win32fix = @import("../win32fix.zig");
-// this constant is missing from win32: https://github.com/microsoft/win32metadata/issues/482
-const WAVE_MAPPER : u32 = 0xFFFFFFFF;
 
 const audio = @import("../../audio.zig");
 usingnamespace audio.renderformat;
