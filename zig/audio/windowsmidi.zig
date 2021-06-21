@@ -31,8 +31,13 @@ pub const MidiInputDevice = struct {
     pub fn asMidiGeneratorNode(self: *MidiInputDevice) *audio.dag.MidiGenerator {
         return &self.midiGeneratorTypeA.midiGenerator;
     }
-    fn midiInputCallback(handle: HMIDIIN, msg: u32,
-        instance: usize, param1: *u32, param2: *u32) callconv(std.os.windows.WINAPI) void {
+    fn midiInputCallback(
+        handle: HMIDIIN,
+        msg: u32,
+        instance: usize,
+        param1: usize,
+        param2: usize
+    ) callconv(std.os.windows.WINAPI) void {
         var device = @intToPtr(*MidiInputDevice, instance);
         switch (msg) {
             MM_MIM_OPEN => {
@@ -42,47 +47,33 @@ pub const MidiInputDevice = struct {
                 midilog.debug("[MidiListenCallback] close", .{});
             },
             MM_MIM_DATA => {
-                const status = LOBYTE(
-                    @intCast(u16, 0xffff & @ptrToInt(param1)));
-                const timestamp = @intCast(u32, 0xffffffff & @ptrToInt(param2));
-
-                const category = status & 0xf0;
-                const NoteType = enum { off, on };
-                if (@as(?NoteType,
-                    if (category == audio.midi.MidiMessageCategory.noteOff) NoteType.off
-                    else if (category == audio.midi.MidiMessageCategory.noteOn) NoteType.on
-                    else null
-                )) |note_type| {
-                    const note     = HIBYTE(
-                        LOWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
-                    const velocity = LOBYTE(
-                        HIWORD(@intCast(u32, 0xffffffff & @ptrToInt(param1))));
-
-                    if (note & 0x80 != 0) {
-                        midilog.err("Bad MIDI note 0x{x} the MSB is set", .{note});
-                    } else if (velocity & 0x80 != 0) {
-                        midilog.err("Bad MIDI velocity 0x{x} the MSB is set", .{velocity});
-                    } else {
-                        midilog.debug("[MidiListenCallback] {} note {} {}, velocity={}",
-                            .{timestamp, note, note_type, velocity});
-                        switch (note_type) {
-                            .off => {
-                                device.midiGeneratorTypeA.addMidiEvent(
-                                    audio.midi.MidiEvent.makeNoteOff(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)))) catch |err| {
-                                        midilog.err("failed to add MIDI OFF event: {}", .{err});
-                                };
-                            },
-                            .on => {
-                                device.midiGeneratorTypeA.addMidiEvent(
-                                    audio.midi.MidiEvent.makeNoteOn(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)), velocity)) catch |err| {
-                                        midilog.err("failed to add MIDI ON event: {}", .{err});
-                                };
-                            },
-                        }
-                    }
-                } else {
-                    midilog.debug("[MidiListenCallback] {} data status=0x{x}", .{timestamp, status});
-                }
+                const midi_msg = audio.midi.MidiMsgUnion { .bytes = [3]u8 {
+                    @intCast(u8, (param1 >>  0) & 0xFF),
+                    @intCast(u8, (param1 >>  8) & 0xFF),
+                    @intCast(u8, (param1 >> 16) & 0xFF),
+                }};
+                audio.midi.logMidiMsg(midi_msg.msg);
+                audio.midi.msgToDevice(
+                    param2, // timestamp
+                    midi_msg.msg,
+                    device.midiGeneratorTypeA,
+                );
+                //midilog.debug("[MidiListenCallback] {} note {} {}, velocity={}",
+                //    .{timestamp, note, note_type, velocity});
+                //switch (note_type) {
+                //    .off => {
+                //        device.midiGeneratorTypeA.addMidiEvent(
+                //            audio.midi.MidiEvent.makeNoteOff(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)))) catch |err| {
+                //                midilog.err("failed to add MIDI OFF event: {}", .{err});
+                //        };
+                //    },
+                //    .on => {
+                //        device.midiGeneratorTypeA.addMidiEvent(
+                //            audio.midi.MidiEvent.makeNoteOn(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)), velocity)) catch |err| {
+                //                midilog.err("failed to add MIDI ON event: {}", .{err});
+                //        };
+                //    },
+                //}
             },
 //        } case MIM_LONGDATA:
 //            logDebug("[MidiListenCallback] longdata");
@@ -97,7 +88,7 @@ pub const MidiInputDevice = struct {
 //            logDebug("[MidiListenCallback] moredata");
 //            break;
             else => {
-                midilog.debug("[MidiListenCallback] UNHANDLED msg={}", .{msg});
+                midilog.warn("[MidiListenCallback] UNHANDLED msg={}", .{msg});
             },
         }
     }

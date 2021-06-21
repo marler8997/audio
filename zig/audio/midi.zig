@@ -1,3 +1,6 @@
+const std = @import("std");
+
+const midilog = std.log.scoped(.midi);
 
 pub const MidiNote = enum(u7) {
     none = 0,
@@ -604,3 +607,133 @@ pub const MidiEvent = struct {
 //        assert(0 == map.remove(MidiNote.d4));
 //    }
 //}
+
+pub const MidiMsgKind = enum(u3) {
+    note_off         = 0b000,
+    note_on          = 0b001,
+    poly_pressure    = 0b010,
+    control_change   = 0b011,
+    program_change   = 0b100,
+    channel_pressure = 0b101,
+    pitch_bend       = 0b110,
+    system_msg       = 0b111,
+};
+const NoteAndVelocity = packed struct {
+    msb_note: u1,
+    note: u7,
+    msb_velocity: u1,
+    velocity: u7,
+};
+pub const MidiMsg = packed struct {
+    status_arg: u4,
+    kind: MidiMsgKind,
+    msb_status: u1,
+    data: packed union {
+        note_off: Note,
+        note_on: Note,
+        poly_pressure: PressureNote,
+        control_change: Control,
+        program_change: packed struct {
+            num: u7,
+            msb_num: u1,
+        },
+        channel_pressure: packed struct {
+            pressure: u7,
+            msb_pressure: u1,
+        },
+        pitch_bend: packed struct {
+            low_bits: u7,
+            ignore1: u1,
+            high_bits: u1,
+            ignore2: u1,
+        },
+
+        pub const Note = packed struct {
+            note: u7,
+            msb_note: u1,
+            velocity: u7,
+            msb_velocity: u1,
+        };
+        pub const PressureNote = packed struct {
+            note: u7,
+            msb_note: u1,
+            pressure: u7,
+            msb_pressure: u1,
+        };
+        pub const Control = packed struct {
+            num: u7,
+            msb_num: u1,
+            velocity: u7,
+            msb_velocity: u1,
+        };
+    },
+};
+
+// TODO: remove this once I can use @bitCast instead
+pub const MidiMsgUnion = packed union {
+    bytes: [@sizeOf(MidiMsg)]u8,
+    msg: MidiMsg,
+};
+
+pub fn logMidiMsg(msg: MidiMsg) void {
+    switch (msg.kind) {
+        .note_off => {
+            midilog.debug("note_off channel={} {}", .{msg.status_arg, msg.data.note_off});
+        },
+        .note_on => {
+            midilog.debug("note_on  channel={} {}", .{msg.status_arg, msg.data.note_on});
+        },
+        .poly_pressure => {
+            midilog.debug("poly_pressure channel={} {}", .{msg.status_arg, msg.data.poly_pressure});
+        },
+        .control_change => {
+            midilog.debug("control_change channel={} {}", .{msg.status_arg, msg.data.control_change});
+        },
+        .program_change => {
+            midilog.debug("program_change channel={} {}", .{msg.status_arg, msg.data.program_change});
+        },
+        .channel_pressure => {
+            midilog.debug("channel_pressure channel={} {}", .{msg.status_arg, msg.data.channel_pressure});
+        },
+        .pitch_bend => {
+            midilog.debug("pitch_bend channel={} {}", .{msg.status_arg, msg.data.pitch_bend});
+        },
+        else => {
+            midilog.debug("unknown msg {}", .{msg});
+        },
+    }
+}
+
+pub fn msgToDevice(timestamp: usize, msg: MidiMsg, device: anytype) void {
+    //if (msg.msb_status != 1) return error.StatusMsbIsZero;
+
+    switch (msg.kind) {
+        .note_off, .note_on => {
+            //if (msg.data.note_off.msb_note != 0) return error.DataMsbIsOne;
+            //if (msg.data.note_off.msb_velocity != 0) return error.DataMsbIsOne;
+            std.log.warn("TODO: implement noteoff/noteon to device", .{});
+            //device.addMidiEvent(
+            //    MidiEvent.makeNoteOff(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)))) catch |err| {
+            //        midilog.err("failed to add MIDI OFF event: {}", .{err});
+            //};
+        },
+        //.poly_pressure => {
+        //    midilog.debug("poly_pressure channel={} {}", .{msg.status_arg, msg.data.poly_pressure});
+        //},
+        //.control_change => {
+        //    midilog.debug("control_change channel={} {}", .{msg.status_arg, msg.data.control_change});
+        //},
+        //.program_change => {
+        //    midilog.debug("program_change channel={} {}", .{msg.status_arg, msg.data.program_change});
+        //},
+        //.channel_pressure => {
+        //    midilog.debug("channel_pressure channel={} {}", .{msg.status_arg, msg.data.channel_pressure});
+        //},
+        //.pitch_bend => {
+        //    midilog.debug("pitch_bend channel={} {}", .{msg.status_arg, msg.data.pitch_bend});
+        //},
+        else => {
+            midilog.debug("unhandled msg {}", .{msg});
+        },
+    }
+}
