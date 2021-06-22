@@ -58,8 +58,8 @@ fn finishGlobals() anyerror!void {
     //const inputDelayMillis = 9;
     //const inputDelayMillis = 10;
     //const inputDelayMillis = 20;
-    //const inputDelayMillis = 30;
-    const inputDelayMillis = 50;
+    const inputDelayMillis = 30;
+    //const inputDelayMillis = 50;
     //const inputDelayMillis = 100;
     audio.global.bufferSampleFrameCount = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
     const inputDelayMillisU32 : u32 = inputDelayMillis; // workaround issue 557
