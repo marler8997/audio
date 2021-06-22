@@ -146,10 +146,10 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
             .buffer_start = bufferStart,
             .buffer_limit = bufferLimit,
         };
-        Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, &mix);
-        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, &mix);
-        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, &mix);
-        Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, &mix);
+        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, mix);
+        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, mix);
+        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, mix);
+        Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
     }
 }
 

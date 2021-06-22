@@ -64,7 +64,7 @@ pub fn Template(comptime Format: type) type { return struct {
             }
         };
         const SampleIterator = struct {
-            mix: *Mix,
+            mix: *const Mix,
             next_buffer: [*]Sample,
             pub fn next(self: *SampleIterator) ?SampleRef {
                 if (@ptrToInt(self.next_buffer) >= @ptrToInt(self.mix.buffer_limit)) {
@@ -76,7 +76,7 @@ pub fn Template(comptime Format: type) type { return struct {
                 return ref;
             }
         };
-        pub fn sampleIterator(self: *Mix) SampleIterator {
+        pub fn sampleIterator(self: *const Mix) SampleIterator {
             return SampleIterator { .mix = self, .next_buffer = self.buffer_start };
         }
     };
@@ -215,14 +215,14 @@ pub fn Template(comptime Format: type) type { return struct {
         //};}
     };
 
-    pub fn renderSingleStepGenerator(comptime T: type, generator: *T, out: *Mix) void {
+    pub fn renderSingleStepGenerator(comptime T: type, generator: *T, out: Mix) void {
         comptime std.debug.assert(@typeInfo(@TypeOf(T.renderOne)).Fn.args[0].arg_type == *T);
         renderSingleStepGeneratorImpl(
             @ptrToInt(generator),
             @ptrCast(OpaqueFn(@TypeOf(T.renderOne)), T.renderOne),
             out);
     }
-    fn renderSingleStepGeneratorImpl(context: usize, renderOneFn: fn(usize) align(1) Sample, out: *Mix) void {
+    fn renderSingleStepGeneratorImpl(context: usize, renderOneFn: fn(usize) align(1) Sample, out: Mix) void {
         var it = out.sampleIterator();
         while (it.next()) |sample| {
             sample.add(renderOneFn(context));
