@@ -147,8 +147,9 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
             .buffer_limit = bufferLimit,
         };
         Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, &mix);
-        Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, &mix);
-        Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, &mix);
+        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, &mix);
+        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, &mix);
+        Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, &mix);
     }
 }
 
@@ -186,6 +187,42 @@ var global_render2_thing3 = Render2.singlestep.Volume(Render2.singlestep.SawFreq
     }),
 };
 
+
+var global_midi_note: ?u7 = null;
+var global_temp_midi_render2_instrument = Render2.singlestep.Volume(Render2.singlestep.Saw) {
+    .volume = 0.02,
+    .renderer = .{
+        .next_sample = 0,
+        .increment = 0,
+    },
+};
+pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void {
+    audio.midi.logMidiMsg(msg);
+    switch (msg.kind) {
+        .note_off => {
+            if (global_midi_note) |note| {
+                if (note == msg.data.note_off.note) {
+                    global_temp_midi_render2_instrument.volume = 0;
+                }
+            }
+        },
+        .note_on => {
+            if (msg.data.note_on.velocity == 0) {
+                if (global_midi_note) |note| {
+                    if (note == msg.data.note_on.note) {
+                        global_temp_midi_render2_instrument.volume = 0;
+                    }
+                }
+            } else {
+                global_midi_note = msg.data.note_on.note;
+                global_temp_midi_render2_instrument.volume = @intToFloat(f32, msg.data.note_on.velocity) / 127;
+                global_temp_midi_render2_instrument.renderer.setFreq(
+                    audio.midi.getStdFreq(@intToEnum(audio.midi.MidiNote, msg.data.note_on.note)));
+            }
+        },
+        else => {},
+    }
+}
 
 pub fn addToEachChannel(channels: []u8, buffer: [*]SamplePoint, value: SamplePoint) void {
     for (channels) |channel| {

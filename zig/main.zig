@@ -78,6 +78,7 @@ const SawWave = false;
 //
 ////version = ValhallaReverb;
 //
+
 fn go() !void {
 //    import mar.arraybuilder;
 //    import audio.dag;
@@ -163,14 +164,14 @@ fn go() !void {
 //        }
 //    }
 
-    var midiInputDevice : audio.osmidi.MidiInputDevice = undefined;
+    var midi_reader: audio.midi.MidiReader = undefined;
     if (UseMidiInstrument) {
-        midiInputDevice = audio.osmidi.MidiInputDevice.init();
-        for (instruments.items) |instrument| {
-            try instrument.addInputNode(midiInputDevice.asMidiGeneratorNode());
-//                .enforce("failed to add midi device input node");
-        }
-        try midiInputDevice.startMidiDeviceInput(0); // just hardcode MIDI device 0 for now
+        midi_reader = audio.midi.MidiReader.init(audio.render.tempMidiInstrumentHandler);
+        //for (instruments.items) |instrument| {
+        //    try instrument.addInputNode(midiInputDevice.asMidiGeneratorNode());
+//      //          .enforce("failed to add midi device input node");
+        //}
+        try midi_reader.start(0); // just hardcode MIDI device 0 for now
     }
 
     const renderThread = try std.Thread.spawn(audio.render.renderThreadEntry, {});
@@ -192,7 +193,7 @@ fn go() !void {
     audio.pckeyboard.joinInputThread();
 
     if (UseMidiInstrument) {
-        try midiInputDevice.stopMidiDeviceInput();
+        try midi_reader.stop();
     }
 }
 //

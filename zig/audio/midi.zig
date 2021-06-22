@@ -2,6 +2,12 @@ const std = @import("std");
 
 const midilog = std.log.scoped(.midi);
 
+pub const ReaderCallback = fn(timestamp: usize, msg: MidiMsg) void;
+
+pub const MidiReader =
+    if (std.builtin.os.tag == .windows) @import("windows/MidiReader.zig")
+    else @compileError("Unuspported OS");
+
 pub const MidiNote = enum(u7) {
     none = 0,
 

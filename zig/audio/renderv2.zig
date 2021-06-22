@@ -81,6 +81,27 @@ pub fn Template(comptime Format: type) type { return struct {
         }
     };
 
+    const Access = enum { get, set };
+    const Knob = struct {
+        name: []const u8,
+        data: union {
+            float_ref: struct {
+                min: f32,
+                max: f32,
+                addr: *f32,
+            },
+            float_cb = struct {
+                min: f32,
+                max: f32,
+                context: usize,
+                cb: fn (usize, *f32, Access) void,
+            },
+            sample_ref: struct {
+                addr: *Sample,
+            },
+        },
+    };
+
     pub const singlestep = struct {
         pub const Saw = struct {
             next_sample: Sample,
@@ -88,8 +109,32 @@ pub fn Template(comptime Format: type) type { return struct {
             pub fn init() @This() {
                 return .{ .next_sample = 0, .increment = 0 };
             }
+            pub fn getKnobs(self: *Saw) [1]Knob {
+                return [_]Knob {
+                    .{
+                        .name = "increment",
+                        .data = .{ .sample_ref = .{ .addr = &self.increment } },
+                    },
+                    .{
+                        .name = "frequency",
+                        .data = .{ .float_cb = .{
+                            .min = 0,
+                            .max = audio.global.sampleFramesPerSec,
+                            .context = @ptrToInt(self),
+                            .cb = freqCb,
+                        } },
+                    },
+                };
+            }
             pub fn freqToIncrement(frequency: f32) Sample {
                 return frequency / Format.intToSample(audio.global.sampleFramesPerSec);
+            }
+            fn freqCb(context: usize, freq_ref: *f32, access: Access) void {
+                const self = @intToPtr(*Saw, context);
+                switch (access) {
+                    .get => freq_ref.* = Format.sampleToFloat(f32, self.increment) * @intToFloat(f32, audio.global.sampleFramesPerSec),
+                    .set => self.increment = freqToIncrement(freq_ref.*),
+                }
             }
             pub fn setFreq(self: *@This(), freq: f32) void {
                 self.increment = freqToIncrement(freq);

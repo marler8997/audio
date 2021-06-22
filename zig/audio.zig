@@ -9,14 +9,6 @@ pub const pckeyboard = @import("./audio/pckeyboard.zig");
 
 const builtin = @import("builtin");
 
-const windowsmidi = @import("./audio/windowsmidi.zig");
-const linuxmidi = @import("./audio/linuxmidi.zig");
-pub const osmidi = switch (builtin.os.tag) {
-    .windows => windowsmidi,
-    .linux => linuxmidi,
-    else => struct {},
-};
-
 const windowsinput = @import("./audio/windowsinput.zig");
 const posixinput = @import("./audio/posixinput.zig");
 pub const osinput = switch (builtin.os.tag) {
