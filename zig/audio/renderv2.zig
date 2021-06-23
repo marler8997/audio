@@ -104,10 +104,13 @@ pub fn Template(comptime Format: type) type { return struct {
 
     pub const singlestep = struct {
         pub const Saw = struct {
-            next_sample: Sample,
+            next_sample: Sample = 0,
             increment: Sample,
             pub fn init() @This() {
-                return .{ .next_sample = 0, .increment = 0 };
+                return .{ .increment = 0 };
+            }
+            pub fn initFreq(freq: f32) @This() {
+                return .{ .increment = freqToIncrement(freq) };
             }
             pub fn getKnobs(self: *Saw) [1]Knob {
                 return [_]Knob {
@@ -150,6 +153,13 @@ pub fn Template(comptime Format: type) type { return struct {
             volume: f32,
             pub fn renderOne(self: *@This()) Sample {
                 return Format.scaleSample(self.renderer.renderOne(), self.volume);
+            }
+        };}
+        pub fn MidiVoice(comptime Renderer: type) type { return struct {
+            renderer: Renderer,
+            note: audio.midi.MidiNote,
+            pub fn renderOne(self: *@This()) Sample {
+                return self.renderer.renderOne();
             }
         };}
         pub const SawFreqChanger = struct {

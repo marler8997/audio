@@ -149,7 +149,10 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
         //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, mix);
         //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, mix);
         //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, mix);
-        Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
+        //Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
+        for (global_temp_midi_voices.getCurrentVoices()) |*voice| {
+            Render2.renderSingleStepGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
+        }
     }
 }
 
@@ -187,38 +190,93 @@ var global_render2_thing3 = Render2.singlestep.Volume(Render2.singlestep.SawFreq
     }),
 };
 
+pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { return struct {
+    const Index = std.math.IntFittingRange(0, count - 1);
+    const Voice = struct {
+        renderer: Renderer,
+        note: audio.midi.MidiNote
+    };
 
-var global_midi_note: ?u7 = null;
-var global_temp_midi_render2_instrument = Render2.singlestep.Volume(Render2.singlestep.Saw) {
-    .volume = 0.02,
-    .renderer = .{
-        .next_sample = 0,
-        .increment = 0,
-    },
-};
+    count: std.math.IntFittingRange(0, count) = 0,
+    available_voices: [count]Voice = undefined,
+
+    pub fn getCurrentVoices(self: *@This()) []Voice {
+        return self.available_voices[0..self.count];
+    }
+    pub fn addAssumeCapacity(self:*@This(), note: audio.midi.MidiNote, renderer: Renderer) void {
+        std.debug.assert(self.count < self.available_voices.len);
+        self.available_voices[self.count] = .{ .note = note, .renderer = renderer };
+        self.count += 1;
+    }
+    pub fn find(self: *@This(), note: audio.midi.MidiNote) ?Index {
+        var i: Index = 0;
+        while (i < self.count) : (i += 1) {
+            if (self.available_voices[i].note == note)
+                return i;
+        }
+        return null;
+    }
+    pub fn remove(self: *@This(), voice_index: Index) void {
+        std.debug.assert(voice_index < self.count);
+        var i: std.math.IntFittingRange(0, count) = voice_index;
+        while (i + 1 < self.count) : (i += 1) {
+            self.available_voices[i] = self.available_voices[i+1];
+        }
+        self.count -= 1;
+    }
+};}
+var global_temp_midi_voices = MidiVoices(10, Render2.singlestep.Volume(Render2.singlestep.Saw)) { };
+
+//var global_temp_midi_render2_instrument = Render2.singlestep.MidiVoice(Render2.singlestep.Volume(Render2.singlestep.Saw)) {
+//    .note = .none,
+//    .renderer = .{
+//        .volume = 0.02,
+//        .renderer = .{
+//            .next_sample = 0,
+//            .increment = 0,
+//        },
+//    },
+//};
 pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void {
     audio.midi.logMidiMsg(msg);
+
     switch (msg.kind) {
-        .note_off => {
-            if (global_midi_note) |note| {
-                if (note == msg.data.note_off.note) {
-                    global_temp_midi_render2_instrument.volume = 0;
-                }
-            }
-        },
-        .note_on => {
-            if (msg.data.note_on.velocity == 0) {
-                if (global_midi_note) |note| {
-                    if (note == msg.data.note_on.note) {
-                        global_temp_midi_render2_instrument.volume = 0;
+        .note_off, .note_on => {
+            const off = (msg.kind == .note_off);
+
+            {
+                const note = @intToEnum(audio.midi.MidiNote, msg.data.note_on.note);
+                if (global_temp_midi_voices.find(note)) |voice_index| {
+                    if (off or msg.data.note_on.velocity == 0) {
+                        std.log.debug("!!!! removing note={} i={}", .{note, voice_index});
+                        global_temp_midi_voices.remove(voice_index);
+                    } else {
+                        std.log.debug("!!!! setting volume note={} i={}", .{note, voice_index});
+                        global_temp_midi_voices.available_voices[voice_index].renderer.volume = @intToFloat(f32, msg.data.note_on.velocity) / 127;
+                    }
+                } else if (!off and msg.data.note_on.velocity > 0) {
+                    if (global_temp_midi_voices.count == global_temp_midi_voices.available_voices.len) {
+                        std.log.warn("out of voices! note={}", .{note});
+                    } else {
+                        std.log.debug("!!!! adding note={}", .{note});
+                        global_temp_midi_voices.addAssumeCapacity(note, .{
+                            .volume = @intToFloat(f32, msg.data.note_on.velocity) / 127,
+                            .renderer = Render2.singlestep.Saw.initFreq(audio.midi.getStdFreq(note)),
+                        });
                     }
                 }
-            } else {
-                global_midi_note = msg.data.note_on.note;
-                global_temp_midi_render2_instrument.volume = @intToFloat(f32, msg.data.note_on.velocity) / 127;
-                global_temp_midi_render2_instrument.renderer.setFreq(
-                    audio.midi.getStdFreq(@intToEnum(audio.midi.MidiNote, msg.data.note_on.note)));
             }
+
+            //if (off or msg.data.note_on.velocity == 0) {
+            //    if (@enumToInt(global_temp_midi_render2_instrument.note) == msg.data.note_off.note) {
+            //        global_temp_midi_render2_instrument.renderer.volume = 0;
+            //    }
+            //} else {
+            //    global_temp_midi_render2_instrument.note = @intToEnum(audio.midi.MidiNote, msg.data.note_on.note);
+            //    global_temp_midi_render2_instrument.renderer.volume = @intToFloat(f32, msg.data.note_on.velocity) / 127;
+            //    global_temp_midi_render2_instrument.renderer.renderer.setFreq(
+            //        audio.midi.getStdFreq(@intToEnum(audio.midi.MidiNote, msg.data.note_on.note)));
+            //}
         },
         else => {},
     }
