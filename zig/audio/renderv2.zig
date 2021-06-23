@@ -88,22 +88,77 @@ pub fn Template(comptime Format: type) type { return struct {
             float_ref: struct {
                 min: f32,
                 max: f32,
-                addr: *f32,
+                field_offset: u32,
+                //addr: *f32,
             },
-            float_cb = struct {
+            float_cb: struct {
                 min: f32,
                 max: f32,
                 context: usize,
                 cb: fn (usize, *f32, Access) void,
             },
             sample_ref: struct {
-                addr: *Sample,
+                field_offset: u32,
+                //addr: *Sample,
             },
         },
     };
 
+    /// Runtime Interfaces (maybe I'll do this, but using Comptie Interfaces for now)
+    /// -------------------------------------------------
+    /// 1. Component:
+    ///    fn queryKnobs(knobs: std.ArrayList(Knob)) void;
+    /// 2. Generator inherits Component:
+    ///    fn renderOne(self: *Generator) Sample;
+    /// 2. Filter inherits Component:
+    ///    fn filterOne(self: *Filter) Sample;
+    ///
+    /// Comptime Interfaces
+    /// -------------------------------------------------
+    /// 1. Component:
+    ///    fn getKnobs() [N]Knob;
+    /// 2. Generator inherits Component:
+    ///    fn renderOne(self: *@This()) Sample;
+    /// 2. Filter inherits Component:
+    ///    fn filterOne(self: *@This()) Sample;
     pub const singlestep = struct {
-        pub const Saw = struct {
+        // These are the Runtime Interfaces I may or may not use
+        // I might create code that turns the Comptime Interfaces into Runtime Interfaces autmoatically.
+        //pub const Component = struct {
+        //    queryKnobs: fn(knobs: std.ArrayList(Knob)) void,
+        //};
+        //pub const Generator = struct {
+        //    component: Component,
+        //    renderOne: fn(self: *Generator) Sample,
+        //};
+        //pub const Filter = struct {
+        //    component: Component,
+        //    filterOne: fn(self: *Filter, sample: Sample) Sample,
+        //};
+
+        /// Chains a Generator and one or more Filters into a new Generator.
+        pub fn Chain(comptime Generator: type, comptime filter_types: []const type) type { return struct {
+            pub const FilterTuple = std.meta.Tuple(filter_types);
+
+            generator: Generator,
+            filters: FilterTuple,
+
+            pub fn renderOne(self: *@This()) Sample {
+                var sample = self.generator.renderOne();
+                inline for (std.meta.fields(FilterTuple)) |field| {
+                    sample = @field(self.filters, field.name).filterOne(sample);
+                }
+                return sample;
+            }
+        };}
+
+        pub const SawGenerator = struct {
+            //generator: Generator = .{
+            //    .component = .{
+            //        .queryKnobs = queryKnobs,
+            //    },
+            //    .renderOne = renderOne,
+            //},
             next_sample: Sample = 0,
             increment: Sample,
             pub fn init() @This() {
@@ -112,7 +167,8 @@ pub fn Template(comptime Format: type) type { return struct {
             pub fn initFreq(freq: f32) @This() {
                 return .{ .increment = freqToIncrement(freq) };
             }
-            pub fn getKnobs(self: *Saw) [1]Knob {
+            // TODO: remove self argument
+            pub fn getKnobs(self: Saw) [1]Knob {
                 return [_]Knob {
                     .{
                         .name = "increment",
@@ -143,18 +199,19 @@ pub fn Template(comptime Format: type) type { return struct {
                 self.increment = freqToIncrement(freq);
             }
             pub fn renderOne(self: *@This()) Sample {
+                //const self = @fieldParentPtr(@This(), "generator", base);
                 const sample = self.next_sample;
                 self.next_sample = Format.addPositiveWithWrap(sample, self.increment);
                 return sample;
             }
         };
-        pub fn Volume(comptime Renderer: type) type { return struct {
-            renderer: Renderer,
+        pub const VolumeFilter = struct {
             volume: f32,
-            pub fn renderOne(self: *@This()) Sample {
-                return Format.scaleSample(self.renderer.renderOne(), self.volume);
+            pub fn filterOne(self: *@This(), sample: Sample) Sample {
+                return Format.scaleSample(sample, self.volume);
             }
-        };}
+        };
+
         pub fn MidiVoice(comptime Renderer: type) type { return struct {
             renderer: Renderer,
             note: audio.midi.MidiNote,
@@ -162,8 +219,10 @@ pub fn Template(comptime Format: type) type { return struct {
                 return self.renderer.renderOne();
             }
         };}
+
+
         pub const SawFreqChanger = struct {
-            saw: Saw,
+            saw: SawGenerator,
 
             event_sample_time: usize,
             event_tick: usize,
@@ -179,7 +238,7 @@ pub fn Template(comptime Format: type) type { return struct {
                 note_end: audio.midi.MidiNote,
                 note_inc: u7,
             };
-            pub fn init(saw: Saw, opt: InitOptions) SawFreqChanger {
+            pub fn init(saw: SawGenerator, opt: InitOptions) SawFreqChanger {
                 return .{
                     .saw = saw,
 
