@@ -45,6 +45,12 @@ pub const RenderFormatFloat32 = struct {
             else => @compileError("unsupported int: " ++ @typeName(@TypeOf(int))),
         }
     }
+    pub fn sampleToF32(sample: Sample) f32 {
+        return sample;
+    }
+    pub fn f32ToSample(f: f32) Sample {
+        return f;
+    }
 };
 
 pub fn Template(comptime Format: type) type { return struct {
@@ -82,45 +88,53 @@ pub fn Template(comptime Format: type) type { return struct {
     };
 
     const Access = enum { get, set };
-    const Knob = struct {
-        name: []const u8,
-        data: union {
-            float_ref: struct {
-                min: f32,
-                max: f32,
-                field_offset: u32,
-                //addr: *f32,
-            },
-            float_cb: struct {
-                min: f32,
-                max: f32,
-                context: usize,
-                cb: fn (usize, *f32, Access) void,
-            },
-            sample_ref: struct {
-                field_offset: u32,
-                //addr: *Sample,
-            },
+    const NamedKnob = struct { name: []const u8, knob: Knob };
+    const Knob = union(enum) {
+        float_field: struct {
+            min: f32,
+            max: f32,
+            field_offset: u32,
         },
+        float_cb: struct {
+            min: f32,
+            max: f32,
+            cb: fn (usize, *f32, Access) void,
+        },
+        sample_field: struct {
+            field_offset: u32,
+        },
+
+        pub fn setF32(self: Knob, context: usize, value: f32) void {
+            switch (self) {
+                .float_field => |k| @intToPtr(*f32, context + k.field_offset).* = std.math.clamp(value, k.min, k.max),
+                .float_cb => |k| {
+                    var set_value = std.math.clamp(value, k.min, k.max);
+                    k.cb(context, &set_value, .set);
+                },
+                .sample_field => |k| @intToPtr(*Sample, context + k.field_offset).* = Format.f32ToSample(value),
+            }
+        }
     };
 
     /// Runtime Interfaces (maybe I'll do this, but using Comptie Interfaces for now)
     /// -------------------------------------------------
     /// 1. Component:
-    ///    fn queryKnobs(knobs: std.ArrayList(Knob)) void;
+    ///      fn queryKnobs(knobs: std.ArrayList(Knob)) void;
     /// 2. Generator inherits Component:
-    ///    fn renderOne(self: *Generator) Sample;
+    ///      fn renderOne(self: *Generator) Sample;
     /// 2. Filter inherits Component:
-    ///    fn filterOne(self: *Filter) Sample;
+    ///      fn filterOne(self: *Filter) Sample;
     ///
     /// Comptime Interfaces
     /// -------------------------------------------------
     /// 1. Component:
-    ///    fn getKnobs() [N]Knob;
+    ///      fn getKnobs() [N]Knob;
     /// 2. Generator inherits Component:
-    ///    fn renderOne(self: *@This()) Sample;
-    /// 2. Filter inherits Component:
-    ///    fn filterOne(self: *@This()) Sample;
+    ///      fn renderOne(self: *@This()) Sample;
+    /// 3. Filter inherits Component:
+    ///      fn filterOne(self: *@This()) Sample;
+    /// 4. KnobChanger inherits Component:
+    //       fn nextSample(self: *@This(), knob: Knob, knob_context: usize) void;
     pub const singlestep = struct {
         // These are the Runtime Interfaces I may or may not use
         // I might create code that turns the Comptime Interfaces into Runtime Interfaces autmoatically.
@@ -143,6 +157,10 @@ pub fn Template(comptime Format: type) type { return struct {
             generator: Generator,
             filters: FilterTuple,
 
+            pub fn getKnobs() []Knob {
+                // TODO: implement this
+            }
+
             pub fn renderOne(self: *@This()) Sample {
                 var sample = self.generator.renderOne();
                 inline for (std.meta.fields(FilterTuple)) |field| {
@@ -152,13 +170,28 @@ pub fn Template(comptime Format: type) type { return struct {
             }
         };}
 
+        /// Attach a KnobChanger to a componenet
+        pub fn AttachedKnob(comptime Component: type, comptime KnobChanger: type, comptime knob: Knob) type { return struct {
+            const Self = @This();
+
+            component: Component,
+            changer: KnobChanger,
+            //knob: Knob,
+
+            pub fn getKnobs() []Knob {
+                // TODO: implement this
+            }
+
+            usingnamespace if (@hasDecl(Component, "renderOne")) struct {
+                pub fn renderOne(self: *Self) Sample {
+                    self.changer.nextSample(knob, @ptrToInt(&self.component));
+                    return self.component.renderOne();
+                }
+            } else @compileError("unknown component type or not implemented: " ++ @typeName(Component));
+        };}
+
+
         pub const SawGenerator = struct {
-            //generator: Generator = .{
-            //    .component = .{
-            //        .queryKnobs = queryKnobs,
-            //    },
-            //    .renderOne = renderOne,
-            //},
             next_sample: Sample = 0,
             increment: Sample,
             pub fn init() @This() {
@@ -167,31 +200,32 @@ pub fn Template(comptime Format: type) type { return struct {
             pub fn initFreq(freq: f32) @This() {
                 return .{ .increment = freqToIncrement(freq) };
             }
-            // TODO: remove self argument
-            pub fn getKnobs(self: Saw) [1]Knob {
+
+            pub const frequency_knob = Knob {
+                .float_cb = .{
+                    .min = 0.00001,
+                    //.max = audio.global.sampleFramesPerSec,
+                    .max = 999999999999999999,
+                    .cb = freqCb,
+                }
+            };
+
+            pub fn getKnobs() [2]NamedKnob {
                 return [_]Knob {
                     .{
                         .name = "increment",
-                        .data = .{ .sample_ref = .{ .addr = &self.increment } },
+                        .data = .{ .sample_field = .{ .field_offset = @offsetOf(@This(), "increment") } },
                     },
-                    .{
-                        .name = "frequency",
-                        .data = .{ .float_cb = .{
-                            .min = 0,
-                            .max = audio.global.sampleFramesPerSec,
-                            .context = @ptrToInt(self),
-                            .cb = freqCb,
-                        } },
-                    },
+                    .{ .name = "frequency", .knob = frequency_knob },
                 };
             }
             pub fn freqToIncrement(frequency: f32) Sample {
                 return frequency / Format.intToSample(audio.global.sampleFramesPerSec);
             }
             fn freqCb(context: usize, freq_ref: *f32, access: Access) void {
-                const self = @intToPtr(*Saw, context);
+                const self = @intToPtr(*SawGenerator, context);
                 switch (access) {
-                    .get => freq_ref.* = Format.sampleToFloat(f32, self.increment) * @intToFloat(f32, audio.global.sampleFramesPerSec),
+                    .get => freq_ref.* = Format.sampleToF32(self.increment) * @intToFloat(f32, audio.global.sampleFramesPerSec),
                     .set => self.increment = freqToIncrement(freq_ref.*),
                 }
             }
@@ -199,7 +233,6 @@ pub fn Template(comptime Format: type) type { return struct {
                 self.increment = freqToIncrement(freq);
             }
             pub fn renderOne(self: *@This()) Sample {
-                //const self = @fieldParentPtr(@This(), "generator", base);
                 const sample = self.next_sample;
                 self.next_sample = Format.addPositiveWithWrap(sample, self.increment);
                 return sample;
@@ -207,6 +240,16 @@ pub fn Template(comptime Format: type) type { return struct {
         };
         pub const VolumeFilter = struct {
             volume: f32,
+            pub fn getKnobs() [1]Knob {
+                return [_]Knob {
+                    .{
+                        .name = "volume",
+                        .data = .{ .float_field = .{
+                            .field_offset = @offsetOf(@This(), "volume"),
+                        } },
+                    },
+                };
+            }
             pub fn filterOne(self: *@This(), sample: Sample) Sample {
                 return Format.scaleSample(sample, self.volume);
             }
@@ -221,9 +264,7 @@ pub fn Template(comptime Format: type) type { return struct {
         };}
 
 
-        pub const SawFreqChanger = struct {
-            saw: SawGenerator,
-
+        pub const NoteFreqF32KnobChanger = struct {
             event_sample_time: usize,
             event_tick: usize,
 
@@ -238,10 +279,8 @@ pub fn Template(comptime Format: type) type { return struct {
                 note_end: audio.midi.MidiNote,
                 note_inc: u7,
             };
-            pub fn init(saw: SawGenerator, opt: InitOptions) SawFreqChanger {
+            pub fn init(opt: InitOptions) NoteFreqF32KnobChanger {
                 return .{
-                    .saw = saw,
-
                     .event_sample_time = opt.event_sample_time,
                     .event_tick = 0,
 
@@ -252,7 +291,7 @@ pub fn Template(comptime Format: type) type { return struct {
                 };
             }
 
-            pub fn renderOne(self: *@This()) Sample {
+            pub fn nextSample(self: *@This(), knob: Knob, knob_context: usize) void {
                 if (self.event_tick == self.event_sample_time) {
                     self.event_tick = 0;
 
@@ -262,12 +301,10 @@ pub fn Template(comptime Format: type) type { return struct {
                     } else {
                         self.note = @intToEnum(audio.midi.MidiNote, @intCast(u7, next_note));
                     }
-                    self.saw.setFreq(audio.midi.getStdFreq(self.note));
+                    knob.setF32(knob_context, audio.midi.getStdFreq(self.note));
                 } else {
                     self.event_tick += 1;
                 }
-
-                return self.saw.renderOne();
             }
         };
         //pub fn Automation(comptime Renderer: type, comptime Automater: type) type { return struct {

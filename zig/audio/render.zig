@@ -92,8 +92,8 @@ fn renderLoop(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]Sampl
     // Temporary one-time setup
     global_render2_thing.generator.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.a4));
     global_render2_thing2.generator.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
-    global_render2_thing3.generator.saw.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
-    global_render2_thing3.generator.event_sample_time = @floatToInt(usize, @intToFloat(f32, audio.global.sampleFramesPerSec) * 0.3);
+    global_render2_thing3.component.generator.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
+    global_render2_thing3.changer.event_sample_time = @floatToInt(usize, @intToFloat(f32, audio.global.sampleFramesPerSec) * 0.3);
 
     try render(channels, bufferStart, bufferLimit);
     //version (DebugDumpRender)
@@ -175,19 +175,26 @@ var global_render2_thing2 = Render2.singlestep.Chain(Render2.singlestep.SawGener
     },
 };
 
-var global_render2_thing3 = Render2.singlestep.Chain(Render2.singlestep.SawFreqChanger, &[_]type {Render2.singlestep.VolumeFilter}) {
-    .generator = Render2.singlestep.SawFreqChanger.init(.{
-        .next_sample = 0,
-        .increment = 0,
-    }, Render2.singlestep.SawFreqChanger.InitOptions {
+var global_render2_thing3 = Render2.singlestep.AttachedKnob(
+    Render2.singlestep.Chain(Render2.singlestep.SawGenerator, &[_]type {Render2.singlestep.VolumeFilter}),
+    Render2.singlestep.NoteFreqF32KnobChanger,
+    Render2.singlestep.SawGenerator.frequency_knob
+) {
+    .component = .{
+        .generator = Render2.singlestep.SawGenerator {
+            .next_sample = 0,
+            .increment = 0,
+        },
+        .filters = .{
+            Render2.singlestep.VolumeFilter { .volume = 0.02 },
+        },
+    },
+    .changer = Render2.singlestep.NoteFreqF32KnobChanger.init(.{
         .event_sample_time = 0,
         .note_start = audio.midi.MidiNote.a2,
         .note_end = audio.midi.MidiNote.a7,
         .note_inc = 3,
     }),
-    .filters = .{
-        .{ .volume = 0.02 },
-    },
 };
 
 pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { return struct {
