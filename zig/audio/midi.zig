@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing = std.testing;
 
 const midilog = std.log.scoped(.midi);
 
@@ -9,11 +10,18 @@ pub const MidiReader =
     else @compileError("Unuspported OS");
 
 pub const MidiNote = enum(u7) {
-    none = 0,
-
-    anegative1 = 9,
-    asharpnegative1 = 10,
-    bnegative1 = 11,
+    cneg1      =  0,
+    csharpneg1 =  1,
+    dneg1      =  2,
+    dsharpneg1 =  3,
+    eneg1      =  4,
+    fneg1      =  5,
+    fsharpneg1 =  6,
+    gneg1      =  7,
+    gsharpneg1 =  8,
+    aneg1      =  9,
+    asharpneg1 = 10,
+    bneg1      = 11,
     c0      =  12,
     csharp0 =  13,
     d0      =  14,
@@ -130,278 +138,271 @@ pub const MidiNote = enum(u7) {
     f9      = 125,
     fsharp9 = 126,
     g9      = 127,
-    //gsharp9 = 127,
 };
 
 pub const defaultFreq = stdFreq;
-//alias defaultFreq = justC4Freq;
+//pub const defaultFreq = justC4Freq;
+//pub const defaultFreq = justFreqTable(MidiNote.b3);
+pub const justC4Freq = justFreqTable(MidiNote.c4);
+pub const justC0Freq = justFreqTable(MidiNote.c0);
 
 pub fn getStdFreq(note : MidiNote) f32 {
     return stdFreq[@enumToInt(note)];
 }
 pub const stdFreq = [_]f32 {
-        8.18, // 0                
-        8.66, // 1                
-        9.18, // 2                
-        9.72, // 3                
-       10.30, // 4                
-       10.91, // 5                
-       11.56, // 6                
-       12.25, // 7                
-       12.98, // 8                
-       13.75, // 9                
-       14.57, // 10               
-       15.43, // 11               
-       16.35, // MidiNote.c0     
-       17.32, // MidiNote.csharp0
-       18.35, // MidiNote.d0     
-       19.45, // MidiNote.dsharp0
-       20.60, // MidiNote.e0     
-       21.83, // MidiNote.f0     
-       23.12, // MidiNote.fsharp0
-       24.50, // MidiNote.g0     
-       25.96, // MidiNote.gsharp0
-       27.50, // MidiNote.a0     
-       29.14, // MidiNote.asharp0
-       30.87, // MidiNote.b0     
-       32.70, // MidiNote.c1     
-       34.65, // MidiNote.csharp1
-       36.71, // MidiNote.d1     
-       38.89, // MidiNote.dsharp1
-       41.20, // MidiNote.e1     
-       43.65, // MidiNote.f1     
-       46.25, // MidiNote.fsharp1
-       49.00, // MidiNote.g1     
-       51.91, // MidiNote.gsharp1
-       55.00, // MidiNote.a1     
-       58.27, // MidiNote.asharp1
-       61.74, // MidiNote.b1     
-       65.41, // MidiNote.c2     
-       69.30, // MidiNote.csharp2
-       73.42, // MidiNote.d2     
-       77.78, // MidiNote.dsharp2
-       82.41, // MidiNote.e2     
-       87.31, // MidiNote.f2     
-       92.50, // MidiNote.fsharp2
-       98.00, // MidiNote.g2     
-      103.83, // MidiNote.gsharp2
-      110.00, // MidiNote.a2     
-      116.54, // MidiNote.asharp2
-      123.47, // MidiNote.b2     
-      130.81, // MidiNote.c3     
-      138.59, // MidiNote.csharp3
-      146.83, // MidiNote.d3     
-      155.56, // MidiNote.dsharp3
-      164.81, // MidiNote.e3     
-      174.61, // MidiNote.f3     
-      185.00, // MidiNote.fsharp3
-      196.00, // MidiNote.g3     
-      207.65, // MidiNote.gsharp3
-      220.00, // MidiNote.a3     
-      233.08, // MidiNote.asharp3
-      246.94, // MidiNote.b3     
-      261.63, // MidiNote.c4     
-      277.18, // MidiNote.csharp4
-      293.66, // MidiNote.d4     
-      311.13, // MidiNote.dsharp4
-      329.63, // MidiNote.e4     
-      349.23, // MidiNote.f4     
-      369.99, // MidiNote.fsharp4
-      392.00, // MidiNote.g4     
-      415.30, // MidiNote.gsharp4
-      440.00, // MidiNote.a4     
-      466.16, // MidiNote.asharp4
-      493.88, // MidiNote.b4     
-      523.25, // MidiNote.c5     
-      554.37, // MidiNote.csharp5
-      587.33, // MidiNote.d5     
-      622.25, // MidiNote.dsharp5
-      659.25, // MidiNote.e5     
-      698.46, // MidiNote.f5     
-      739.99, // MidiNote.fsharp5
-      783.99, // MidiNote.g5     
-      830.61, // MidiNote.gsharp5
-      880.00, // MidiNote.a5     
-      932.33, // MidiNote.asharp5
-      987.77, // MidiNote.b5     
-     1046.50, // MidiNote.c6     
-     1108.73, // MidiNote.csharp6
-     1174.66, // MidiNote.d6     
-     1244.51, // MidiNote.dsharp6
-     1318.51, // MidiNote.e6     
-     1396.91, // MidiNote.f6     
-     1479.98, // MidiNote.fsharp6
-     1567.98, // MidiNote.g6     
-     1661.22, // MidiNote.gsharp6
-     1760.00, // MidiNote.a6     
-     1864.66, // MidiNote.asharp6
-     1975.53, // MidiNote.b6     
-     2093.00, // MidiNote.c7     
-     2217.46, // MidiNote.csharp7
-     2349.32, // MidiNote.d7     
-     2489.02, // MidiNote.dsharp7
-     2637.02, // MidiNote.e7     
-     2793.83, // MidiNote.f7     
-     2959.96, // MidiNote.fsharp7
-     3135.96, // MidiNote.g7     
-     3322.44, // MidiNote.gsharp7
-     3520.00, // MidiNote.a7     
-     3729.31, // MidiNote.asharp7
-     3951.07, // MidiNote.b7     
-     4186.01, // MidiNote.c8     
-     4434.92, // MidiNote.csharp8
-     4698.63, // MidiNote.d8     
-     4978.03, // MidiNote.dsharp8
-     5274.04, // MidiNote.e8     
-     5587.65, // MidiNote.f8     
-     5919.91, // MidiNote.fsharp8
-     6271.93, // MidiNote.g8     
-     6644.88, // MidiNote.gsharp8
-     7040.00, // MidiNote.a8     
-     7458.62, // MidiNote.asharp8
-     7902.13, // MidiNote.b8     
-     8372.02, // MidiNote.c9     
-     8869.84, // MidiNote.csharp9
-     9397.27, // MidiNote.d9     
-     9956.06, // MidiNote.dsharp9
-    10548.08, // MidiNote.e9     
-    11175.30, // MidiNote.f9     
-    11839.82, // MidiNote.fsharp9
-    12543.85, // MidiNote.g9     
-    //stdFreq[@enumToInt(MidiNote.gsharp9)] = 13289.75;
+        8.18, //   0
+        8.66, //   1
+        9.18, //   2
+        9.72, //   3
+       10.30, //   4
+       10.91, //   5
+       11.56, //   6
+       12.25, //   7
+       12.98, //   8
+       13.75, //   9
+       14.57, //  10
+       15.43, //  11
+       16.35, //  12 - c0
+       17.32, //  13 - csharp0
+       18.35, //  14 - d0
+       19.45, //  15 - dsharp0
+       20.60, //  16 - e0
+       21.83, //  17 - f0
+       23.12, //  18 - fsharp0
+       24.50, //  19 - g0
+       25.96, //  20 - gsharp0
+       27.50, //  21 - a0
+       29.14, //  22 - asharp0
+       30.87, //  23 - b0
+       32.70, //  24 - c1
+       34.65, //  25 - csharp1
+       36.71, //  26 - d1
+       38.89, //  27 - dsharp1
+       41.20, //  28 - e1
+       43.65, //  29 - f1
+       46.25, //  30 - fsharp1
+       49.00, //  31 - g1
+       51.91, //  32 - gsharp1
+       55.00, //  33 - a1
+       58.27, //  34 - asharp1
+       61.74, //  35 - b1
+       65.41, //  36 - c2
+       69.30, //  37 - csharp2
+       73.42, //  38 - d2
+       77.78, //  39 - dsharp2
+       82.41, //  40 - e2
+       87.31, //  41 - f2
+       92.50, //  42 - fsharp2
+       98.00, //  43 - g2
+      103.83, //  44 - gsharp2
+      110.00, //  45 - a2
+      116.54, //  46 - asharp2
+      123.47, //  47 - b2
+      130.81, //  48 - c3
+      138.59, //  49 - csharp3
+      146.83, //  50 - d3
+      155.56, //  51 - dsharp3
+      164.81, //  52 - e3
+      174.61, //  53 - f3
+      185.00, //  54 - fsharp3
+      196.00, //  55 - g3
+      207.65, //  56 - gsharp3
+      220.00, //  57 - a3
+      233.08, //  58 - asharp3
+      246.94, //  59 - b3
+      261.63, //  60 - c4
+      277.18, //  61 - csharp4
+      293.66, //  62 - d4
+      311.13, //  63 - dsharp4
+      329.63, //  64 - e4
+      349.23, //  65 - f4
+      369.99, //  66 - fsharp4
+      392.00, //  67 - g4
+      415.30, //  68 - gsharp4
+      440.00, //  69 - a4
+      466.16, //  70 - asharp4
+      493.88, //  71 - b4
+      523.25, //  72 - c5
+      554.37, //  73 - csharp5
+      587.33, //  74 - d5
+      622.25, //  75 - dsharp5
+      659.25, //  76 - e5
+      698.46, //  77 - f5
+      739.99, //  78 - fsharp5
+      783.99, //  79 - g5
+      830.61, //  80 - gsharp5
+      880.00, //  81 - a5
+      932.33, //  82 - asharp5
+      987.77, //  83 - b5
+     1046.50, //  84 - c6
+     1108.73, //  85 - csharp6
+     1174.66, //  86 - d6
+     1244.51, //  87 - dsharp6
+     1318.51, //  88 - e6
+     1396.91, //  89 - f6
+     1479.98, //  90 - fsharp6
+     1567.98, //  91 - g6
+     1661.22, //  92 - gsharp6
+     1760.00, //  93 - a6
+     1864.66, //  94 - asharp6
+     1975.53, //  95 - b6
+     2093.00, //  96 - c7
+     2217.46, //  97 - csharp7
+     2349.32, //  98 - d7
+     2489.02, //  99 - dsharp7
+     2637.02, // 100 - e7
+     2793.83, // 101 - f7
+     2959.96, // 102 - fsharp7
+     3135.96, // 103 - g7
+     3322.44, // 104 - gsharp7
+     3520.00, // 105 - a7
+     3729.31, // 106 - asharp7
+     3951.07, // 107 - b7
+     4186.01, // 108 - c8
+     4434.92, // 109 - csharp8
+     4698.63, // 110 - d8
+     4978.03, // 111 - dsharp8
+     5274.04, // 112 - e8
+     5587.65, // 113 - f8
+     5919.91, // 114 - fsharp8
+     6271.93, // 115 - g8
+     6644.88, // 116 - gsharp8
+     7040.00, // 117 - a8
+     7458.62, // 118 - asharp8
+     7902.13, // 119 - b8
+     8372.02, // 120 - c9
+     8869.84, // 121 - csharp9
+     9397.27, // 122 - d9
+     9956.06, // 123 - dsharp9
+    10548.08, // 124 - e9
+    11175.30, // 125 - f9
+    11839.82, // 126 - fsharp9
+    12543.85, // 127 - g9
 };
 
-//__gshared immutable float[256] justC4Freq = [
-//     0               : 0,
-//     1               : 0,
-//     2               : 0,
-//     3               : 0,
-//     4               : 0,
-//     5               : 0,
-//     6               : 0,
-//     7               : 0,
-//     8               : 0,
-//     9               : 0,
-//    10               : 0,
-//    11               : 0,
-//    MidiNote.c0      : stdFreq[MidiNote.c4] * 0.0625,
-//    MidiNote.csharp0 : stdFreq[MidiNote.c4] * 0.0625 * 1.0417,
-//    MidiNote.d0      : stdFreq[MidiNote.c4] * 0.0625 * 1.1250,
-//    MidiNote.dsharp0 : stdFreq[MidiNote.c4] * 0.0625 * 1.2000,
-//    MidiNote.e0      : stdFreq[MidiNote.c4] * 0.0625 * 1.2500,
-//    MidiNote.f0      : stdFreq[MidiNote.c4] * 0.0625 * 1.3333,
-//    MidiNote.fsharp0 : stdFreq[MidiNote.c4] * 0.0625 * 1.4063,
-//    MidiNote.g0      : stdFreq[MidiNote.c4] * 0.0625 * 1.5000,
-//    MidiNote.gsharp0 : stdFreq[MidiNote.c4] * 0.0625 * 1.6000,
-//    MidiNote.a0      : stdFreq[MidiNote.c4] * 0.0625 * 1.6667,
-//    MidiNote.asharp0 : stdFreq[MidiNote.c4] * 0.0625 * 1.8000,
-//    MidiNote.b0      : stdFreq[MidiNote.c4] * 0.0625 * 1.8750,
-//    MidiNote.c1      : stdFreq[MidiNote.c4] * 0.125,
-//    MidiNote.csharp1 : stdFreq[MidiNote.c4] * 0.125 * 1.0417,
-//    MidiNote.d1      : stdFreq[MidiNote.c4] * 0.125 * 1.1250,
-//    MidiNote.dsharp1 : stdFreq[MidiNote.c4] * 0.125 * 1.2000,
-//    MidiNote.e1      : stdFreq[MidiNote.c4] * 0.125 * 1.2500,
-//    MidiNote.f1      : stdFreq[MidiNote.c4] * 0.125 * 1.3333,
-//    MidiNote.fsharp1 : stdFreq[MidiNote.c4] * 0.125 * 1.4063,
-//    MidiNote.g1      : stdFreq[MidiNote.c4] * 0.125 * 1.5000,
-//    MidiNote.gsharp1 : stdFreq[MidiNote.c4] * 0.125 * 1.6000,
-//    MidiNote.a1      : stdFreq[MidiNote.c4] * 0.125 * 1.6667,
-//    MidiNote.asharp1 : stdFreq[MidiNote.c4] * 0.125 * 1.8000,
-//    MidiNote.b1      : stdFreq[MidiNote.c4] * 0.125 * 1.8750,
-//    MidiNote.c2      : stdFreq[MidiNote.c4] * 0.25,
-//    MidiNote.csharp2 : stdFreq[MidiNote.c4] * 0.25 * 1.0417,
-//    MidiNote.d2      : stdFreq[MidiNote.c4] * 0.25 * 1.1250,
-//    MidiNote.dsharp2 : stdFreq[MidiNote.c4] * 0.25 * 1.2000,
-//    MidiNote.e2      : stdFreq[MidiNote.c4] * 0.25 * 1.2500,
-//    MidiNote.f2      : stdFreq[MidiNote.c4] * 0.25 * 1.3333,
-//    MidiNote.fsharp2 : stdFreq[MidiNote.c4] * 0.25 * 1.4063,
-//    MidiNote.g2      : stdFreq[MidiNote.c4] * 0.25 * 1.5000,
-//    MidiNote.gsharp2 : stdFreq[MidiNote.c4] * 0.25 * 1.6000,
-//    MidiNote.a2      : stdFreq[MidiNote.c4] * 0.25 * 1.6667,
-//    MidiNote.asharp2 : stdFreq[MidiNote.c4] * 0.25 * 1.8000,
-//    MidiNote.b2      : stdFreq[MidiNote.c4] * 0.25 * 1.8750,
-//    MidiNote.c3      : stdFreq[MidiNote.c4] * 0.5,
-//    MidiNote.csharp3 : stdFreq[MidiNote.c4] * 0.5 * 1.0417,
-//    MidiNote.d3      : stdFreq[MidiNote.c4] * 0.5 * 1.1250,
-//    MidiNote.dsharp3 : stdFreq[MidiNote.c4] * 0.5 * 1.2000,
-//    MidiNote.e3      : stdFreq[MidiNote.c4] * 0.5 * 1.2500,
-//    MidiNote.f3      : stdFreq[MidiNote.c4] * 0.5 * 1.3333,
-//    MidiNote.fsharp3 : stdFreq[MidiNote.c4] * 0.5 * 1.4063,
-//    MidiNote.g3      : stdFreq[MidiNote.c4] * 0.5 * 1.5000,
-//    MidiNote.gsharp3 : stdFreq[MidiNote.c4] * 0.5 * 1.6000,
-//    MidiNote.a3      : stdFreq[MidiNote.c4] * 0.5 * 1.6667,
-//    MidiNote.asharp3 : stdFreq[MidiNote.c4] * 0.5 * 1.8000,
-//    MidiNote.b3      : stdFreq[MidiNote.c4] * 0.5 * 1.8750,
-//    MidiNote.c4      : stdFreq[MidiNote.c4],
-//    MidiNote.csharp4 : stdFreq[MidiNote.c4] * 1.0417,
-//    MidiNote.d4      : stdFreq[MidiNote.c4] * 1.1250,
-//    MidiNote.dsharp4 : stdFreq[MidiNote.c4] * 1.2000,
-//    MidiNote.e4      : stdFreq[MidiNote.c4] * 1.2500,
-//    MidiNote.f4      : stdFreq[MidiNote.c4] * 1.3333,
-//    MidiNote.fsharp4 : stdFreq[MidiNote.c4] * 1.4063,
-//    MidiNote.g4      : stdFreq[MidiNote.c4] * 1.5000,
-//    MidiNote.gsharp4 : stdFreq[MidiNote.c4] * 1.6000,
-//    MidiNote.a4      : stdFreq[MidiNote.c4] * 1.6667,
-//    MidiNote.asharp4 : stdFreq[MidiNote.c4] * 1.8000,
-//    MidiNote.b4      : stdFreq[MidiNote.c4] * 1.8750,
-//    MidiNote.c5      : stdFreq[MidiNote.c4] * 2,
-//    MidiNote.csharp5 : stdFreq[MidiNote.c4] * 2 * 1.0417,
-//    MidiNote.d5      : stdFreq[MidiNote.c4] * 2 * 1.1250,
-//    MidiNote.dsharp5 : stdFreq[MidiNote.c4] * 2 * 1.2000,
-//    MidiNote.e5      : stdFreq[MidiNote.c4] * 2 * 1.2500,
-//    MidiNote.f5      : stdFreq[MidiNote.c4] * 2 * 1.3333,
-//    MidiNote.fsharp5 : stdFreq[MidiNote.c4] * 2 * 1.4063,
-//    MidiNote.g5      : stdFreq[MidiNote.c4] * 2 * 1.5000,
-//    MidiNote.gsharp5 : stdFreq[MidiNote.c4] * 2 * 1.6000,
-//    MidiNote.a5      : stdFreq[MidiNote.c4] * 2 * 1.6667,
-//    MidiNote.asharp5 : stdFreq[MidiNote.c4] * 2 * 1.8000,
-//    MidiNote.b5      : stdFreq[MidiNote.c4] * 2 * 1.8750,
-//    MidiNote.c6      : stdFreq[MidiNote.c4] * 4,
-//    MidiNote.csharp6 : stdFreq[MidiNote.c4] * 4 * 1.0417,
-//    MidiNote.d6      : stdFreq[MidiNote.c4] * 4 * 1.1250,
-//    MidiNote.dsharp6 : stdFreq[MidiNote.c4] * 4 * 1.2000,
-//    MidiNote.e6      : stdFreq[MidiNote.c4] * 4 * 1.2500,
-//    MidiNote.f6      : stdFreq[MidiNote.c4] * 4 * 1.3333,
-//    MidiNote.fsharp6 : stdFreq[MidiNote.c4] * 4 * 1.4063,
-//    MidiNote.g6      : stdFreq[MidiNote.c4] * 4 * 1.5000,
-//    MidiNote.gsharp6 : stdFreq[MidiNote.c4] * 4 * 1.6000,
-//    MidiNote.a6      : stdFreq[MidiNote.c4] * 4 * 1.6667,
-//    MidiNote.asharp6 : stdFreq[MidiNote.c4] * 4 * 1.8000,
-//    MidiNote.b6      : stdFreq[MidiNote.c4] * 4 * 1.8750,
-//    MidiNote.c7      : stdFreq[MidiNote.c4] * 8,
-//    MidiNote.csharp7 : stdFreq[MidiNote.c4] * 8 * 1.0417,
-//    MidiNote.d7      : stdFreq[MidiNote.c4] * 8 * 1.1250,
-//    MidiNote.dsharp7 : stdFreq[MidiNote.c4] * 8 * 1.2000,
-//    MidiNote.e7      : stdFreq[MidiNote.c4] * 8 * 1.2500,
-//    MidiNote.f7      : stdFreq[MidiNote.c4] * 8 * 1.3333,
-//    MidiNote.fsharp7 : stdFreq[MidiNote.c4] * 8 * 1.4063,
-//    MidiNote.g7      : stdFreq[MidiNote.c4] * 8 * 1.5000,
-//    MidiNote.gsharp7 : stdFreq[MidiNote.c4] * 8 * 1.6000,
-//    MidiNote.a7      : stdFreq[MidiNote.c4] * 8 * 1.6667,
-//    MidiNote.asharp7 : stdFreq[MidiNote.c4] * 8 * 1.8000,
-//    MidiNote.b7      : stdFreq[MidiNote.c4] * 8 * 1.8750,
-//    MidiNote.c8      : stdFreq[MidiNote.c4] * 16,
-//    MidiNote.csharp8 : stdFreq[MidiNote.c4] * 16 * 1.0417,
-//    MidiNote.d8      : stdFreq[MidiNote.c4] * 16 * 1.1250,
-//    MidiNote.dsharp8 : stdFreq[MidiNote.c4] * 16 * 1.2000,
-//    MidiNote.e8      : stdFreq[MidiNote.c4] * 16 * 1.2500,
-//    MidiNote.f8      : stdFreq[MidiNote.c4] * 16 * 1.3333,
-//    MidiNote.fsharp8 : stdFreq[MidiNote.c4] * 16 * 1.4063,
-//    MidiNote.g8      : stdFreq[MidiNote.c4] * 16 * 1.5000,
-//    MidiNote.gsharp8 : stdFreq[MidiNote.c4] * 16 * 1.6000,
-//    MidiNote.a8      : stdFreq[MidiNote.c4] * 16 * 1.6667,
-//    MidiNote.asharp8 : stdFreq[MidiNote.c4] * 16 * 1.8000,
-//    MidiNote.b8      : stdFreq[MidiNote.c4] * 16 * 1.8750,
-//    MidiNote.c9      : stdFreq[MidiNote.c4] * 32,
-//    MidiNote.csharp9 : stdFreq[MidiNote.c4] * 32 * 1.0417,
-//    MidiNote.d9      : stdFreq[MidiNote.c4] * 32 * 1.1250,
-//    MidiNote.dsharp9 : stdFreq[MidiNote.c4] * 32 * 1.2000,
-//    MidiNote.e9      : stdFreq[MidiNote.c4] * 32 * 1.2500,
-//    MidiNote.f9      : stdFreq[MidiNote.c4] * 32 * 1.3333,
-//    MidiNote.fsharp9 : stdFreq[MidiNote.c4] * 32 * 1.4063,
-//    MidiNote.g9      : stdFreq[MidiNote.c4] * 32 * 1.5000,
-//    //MidiNote.gsharp9 : stdFreq[MidiNote.c4] * 32 * 1.6000,
-//];
+/// The "OctaveRoot" is the same note as some "root note" but in a different
+/// octave.
+const OctaveRoot = struct { octave: i5, root: i8 };
+
+fn getOctaveRoot(root: MidiNote, note: MidiNote) OctaveRoot {
+    @setEvalBranchQuota(3000);
+
+    if (@enumToInt(note) >= @enumToInt(root)) {
+        var result = OctaveRoot { .octave = 0, .root = undefined };
+        var next_root = @as(u8, @enumToInt(root)) + 12;
+        while (next_root <= @enumToInt(note)) : (next_root += 12) {
+            result.octave += 1;
+        }
+        result.root = @intCast(i8, next_root - 12);
+        return result;
+    }
+
+    var result = OctaveRoot { .octave = -1, .root =  @as(i8, @enumToInt(root)) - 12 };
+    while (result.root > @enumToInt(note)) : (result.root -= 12) {
+        result.octave -= 1;
+    }
+    return result;
+}
+test "getOctaveRoot" {
+    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @enumToInt(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.c4));
+    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @enumToInt(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.csharp4));
+    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @enumToInt(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.b4));
+    try testing.expectEqual(OctaveRoot { .octave =  1, .root = @enumToInt(MidiNote.c5)}, getOctaveRoot(MidiNote.c4, MidiNote.c5));
+    try testing.expectEqual(OctaveRoot { .octave =  1, .root = @enumToInt(MidiNote.c5)}, getOctaveRoot(MidiNote.c4, MidiNote.b5));
+    try testing.expectEqual(OctaveRoot { .octave =  5, .root = @enumToInt(MidiNote.c9)}, getOctaveRoot(MidiNote.c4, MidiNote.g9));
+
+    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @enumToInt(MidiNote.c3)}, getOctaveRoot(MidiNote.c4, MidiNote.b3));
+    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @enumToInt(MidiNote.c3)}, getOctaveRoot(MidiNote.c4, MidiNote.c3));
+    try testing.expectEqual(OctaveRoot { .octave = -2, .root = @enumToInt(MidiNote.c2)}, getOctaveRoot(MidiNote.c4, MidiNote.b2));
+    try testing.expectEqual(OctaveRoot { .octave = -4, .root = @enumToInt(MidiNote.c0)}, getOctaveRoot(MidiNote.c4, MidiNote.c0));
+
+    try testing.expectEqual(OctaveRoot { .octave = -1, .root = -11}, getOctaveRoot(MidiNote.csharpneg1, MidiNote.cneg1));
+    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @enumToInt(MidiNote.g8)}, getOctaveRoot(MidiNote.g9, MidiNote.f9));
+}
+
+const NotePos = struct {
+    octave: i5,
+    interval: u4,
+};
+fn notePos(root: MidiNote, note: MidiNote) NotePos {
+    const octave_root = getOctaveRoot(root, note);
+    return .{ .octave = octave_root.octave, .interval = @intCast(u4, @enumToInt(note) - octave_root.root) };
+}
+
+
+const neg_scale_table = [_]f32 {
+    0.0/1024.0, 0.0/512.0, 0.0/256.0, 0.0/128.0, 0.0/64.0, 0.0/32.0, 0.0/16.0, 0.0/8.0, 0.0/4.0, 0.0/2.0,
+};
+const pos_scale_table = [_]f32 {
+    1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0,
+};
+fn getScale(octave: i5) f32 {
+    if (octave >= 0) {
+        return pos_scale_table[@intCast(usize, octave)];
+    }
+    return neg_scale_table[@intCast(usize, -octave)];
+}
+
+fn getJustRatio(interval: u4) f32 {
+    return switch (interval) {
+        0 => 1.0,         // 1      (C  in key of C)
+        // Ratios of 2
+        7 => 3.0 / 2.0,   // 5      (G  in key of C)
+        // Ratios of 3
+        5 => 4.0 / 3.0,   // 4      (F  in key of C)
+        9 => 5.0 / 3.0,   // 6      (A  in key of C)
+        // Ratios of 4
+        4 => 5.0 / 4.0,   // 3      (E  in key of C)
+        // ----- 6/4 (same as 3/2)
+        // ----- 7/4 (not used in 18th century european music?)
+        // Ratios of 5
+        3 => 6.0 / 5.0,   // Flat 3 (Eb in key of C)
+        6 => 7.0 / 5.0,   // Flat 5 (Gb in key of C)
+        8 => 8.0 / 5.0,   // Flat 6 (Ab in key of C)
+        10 => 9.0 / 5.0,  // Flat 7 (Bb in key of C)
+        // Ratios of 6?
+        // -----  7/6 ?
+        // -----  8/6 is 4/3
+        // -----  9/6 is 3/2
+        // ----- 10/6 is 5/3
+        // ----- 11/6 ?
+        // Ratios of 7?
+        // -----  8/7?
+        // -----  9/8?
+        // ----- 10/7?
+        // ----- 11/7?
+        // ----- 12/7?
+        // ----- 13/7?
+        // Ratios of 8
+        2 => 9.0 / 8.0, // 2      (D in key of C)
+        // ----- 10/8 (same as 5/4)
+        // ----- 11/8?
+        // ----- 12/8 (same as 3/2)
+        // ----- 13/8 ?
+        // ----- 14/8 (same as 7/4)
+        11 => 15.0 / 8.0, //7      (B in key of C)
+        1 => 16.0 / 15.0,//Flat 2 (Db in key of C)
+        else => @panic("interval must be between 0 and 11"),
+    };
+}
+
+fn justFreqTable(root_note: MidiNote) [127]f32 {
+    var table: [127]f32 = undefined;
+    const root_freq = stdFreq[@enumToInt(root_note)];
+    {
+        var i: u7 = 0;
+        while (true) {
+            const pos = notePos(root_note, @intToEnum(MidiNote, i));
+            table[i] = root_freq * getScale(pos.octave) * getJustRatio(pos.interval);
+            i += 1;
+            if (i == table.len - 1)
+                break;
+        }
+    }
+    return table;
+}
+
+
 
 // TODO: enum not working for some reason?
 pub const MidiMessageCategory = struct {

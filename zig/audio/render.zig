@@ -261,7 +261,7 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
                         std.log.debug("!!!! adding note={}", .{note});
                         global_temp_midi_voices.addAssumeCapacity(note, .{
                             .volume = @intToFloat(f32, msg.data.note_on.velocity) / 127,
-                            .renderer = Render2.singlestep.Saw.initFreq(audio.midi.getStdFreq(note)),
+                            .renderer = Render2.singlestep.Saw.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
                         });
                     }
                 }
