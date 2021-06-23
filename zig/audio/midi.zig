@@ -648,6 +648,7 @@ pub const MidiMsg = packed struct {
     kind: MidiMsgKind,
     msb_status: u1,
     data: packed union {
+        bytes: [2]u8,
         note_off: Note,
         note_on: Note,
         poly_pressure: PressureNote,
@@ -662,9 +663,12 @@ pub const MidiMsg = packed struct {
         },
         pitch_bend: packed struct {
             low_bits: u7,
-            ignore1: u1,
-            high_bits: u1,
-            ignore2: u1,
+            msb_low_bits: u1,
+            high_bits: u7,
+            msb_high_bits: u1,
+            pub fn getValue(self: @This()) u14 {
+                return (@intCast(u14, self.high_bits) << 7) | @intCast(u14, self.low_bits);
+            }
         },
 
         pub const Note = packed struct {
@@ -694,13 +698,20 @@ pub const MidiMsgUnion = packed union {
     msg: MidiMsg,
 };
 
+pub fn checkMidiMsg(msg: MidiMsg) !void {
+    if (msg.msb_status == 0) return error.MidiMsgStatusMsbIsZero;
+    if (msg.data.bytes[0] == 1) return error.MidiMsgFirstDataByteMsbIsOne;
+    if (msg.data.bytes[1] == 1) return error.MidiMsgSecondDataByteMsbIsOne;
+}
+
 pub fn logMidiMsg(msg: MidiMsg) void {
     switch (msg.kind) {
-        .note_off => {
-            midilog.debug("note_off channel={} {}", .{msg.status_arg, msg.data.note_off});
-        },
-        .note_on => {
-            midilog.debug("note_on  channel={} {}", .{msg.status_arg, msg.data.note_on});
+        .note_off, .note_on => {
+            const kind: []const u8 = if (msg.kind == .note_off) "off" else "on";
+            midilog.debug("note_{s} channel={} note={s}({}) velocity={}", .{
+                kind, msg.status_arg,
+                @tagName(@intToEnum(MidiNote, msg.data.note_off.note)),
+                msg.data.note_off.note, msg.data.note_off.velocity});
         },
         .poly_pressure => {
             midilog.debug("poly_pressure channel={} {}", .{msg.status_arg, msg.data.poly_pressure});
@@ -715,7 +726,7 @@ pub fn logMidiMsg(msg: MidiMsg) void {
             midilog.debug("channel_pressure channel={} {}", .{msg.status_arg, msg.data.channel_pressure});
         },
         .pitch_bend => {
-            midilog.debug("pitch_bend channel={} {}", .{msg.status_arg, msg.data.pitch_bend});
+            midilog.debug("pitch_bend channel={} {}", .{msg.status_arg, msg.data.pitch_bend.getValue()});
         },
         else => {
             midilog.debug("unknown msg {}", .{msg});

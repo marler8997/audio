@@ -150,8 +150,10 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
         //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, mix);
         //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, mix);
         //Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
-        for (global_temp_midi_voices.getCurrentVoices()) |*voice| {
-            Render2.renderSingleStepGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
+        for (global_temp_midi_channel_voices) |*channel_voice| {
+            for (channel_voice.getCurrentVoices()) |*voice| {
+                Render2.renderSingleStepGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
+            }
         }
     }
 }
@@ -232,12 +234,11 @@ pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { 
         self.count -= 1;
     }
 };}
-//var global_temp_midi_voices = MidiVoices(10, Render2.singlestep.Volume(Render2.singlestep.Saw)) { };
-var global_temp_midi_voices = MidiVoices(10, Render2.singlestep.Chain(
+var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chain(
     Render2.singlestep.SawGenerator, &[_]type {
         Render2.singlestep.VolumeFilter,
     }
-)) { };
+)) { .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}};
 
 //var global_temp_midi_render2_instrument = Render2.singlestep.MidiVoice(Render2.singlestep.Volume(Render2.singlestep.Saw)) {
 //    .note = .none,
@@ -250,6 +251,10 @@ var global_temp_midi_voices = MidiVoices(10, Render2.singlestep.Chain(
 //    },
 //};
 pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void {
+    audio.midi.checkMidiMsg(msg) catch |e| {
+        std.log.err("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", .{});
+        std.log.err("Midi Message Error: {}", .{e});
+    };
     audio.midi.logMidiMsg(msg);
 
     switch (msg.kind) {
@@ -257,22 +262,24 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
             const off = (msg.kind == .note_off);
             const volume_scale = 0.2;
 
+            const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
+
             {
                 const note = @intToEnum(audio.midi.MidiNote, msg.data.note_on.note);
-                if (global_temp_midi_voices.find(note)) |voice_index| {
+                if (channel_voices.find(note)) |voice_index| {
                     if (off or msg.data.note_on.velocity == 0) {
-                        std.log.debug("!!!! removing note={} i={}", .{note, voice_index});
-                        global_temp_midi_voices.remove(voice_index);
+                        std.log.debug("!!!! removing note={s} i={}", .{@tagName(note), voice_index});
+                        channel_voices.remove(voice_index);
                     } else {
-                        std.log.debug("!!!! setting volume note={} i={}", .{note, voice_index});
-                        global_temp_midi_voices.available_voices[voice_index].renderer.filters[0].volume = @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale;
+                        std.log.debug("!!!! setting volume note={s} i={}", .{@tagName(note), voice_index});
+                        channel_voices.available_voices[voice_index].renderer.filters[0].volume = @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale;
                     }
                 } else if (!off and msg.data.note_on.velocity > 0) {
-                    if (global_temp_midi_voices.count == global_temp_midi_voices.available_voices.len) {
-                        std.log.warn("out of voices! note={}", .{note});
+                    if (channel_voices.count == channel_voices.available_voices.len) {
+                        std.log.warn("out of voices! note={s}", .{@tagName(note)});
                     } else {
-                        std.log.debug("!!!! adding note={}", .{note});
-                        global_temp_midi_voices.addAssumeCapacity(note, .{
+                        std.log.debug("!!!! adding note={s}", .{@tagName(note)});
+                        channel_voices.addAssumeCapacity(note, .{
                             .generator = Render2.singlestep.SawGenerator.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
                             .filters = .{
                                 .{ .volume =  @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale },
@@ -293,8 +300,50 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
             //        audio.midi.getStdFreq(@intToEnum(audio.midi.MidiNote, msg.data.note_on.note)));
             //}
         },
+        .pitch_bend => {
+            const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
+
+            const bend_value = msg.data.pitch_bend.getValue();
+            //const bend_ratio = getBendRatio(bend_value);
+            //const bend_distance = 28; // I think the Seaboard rise assumes this to be 24?
+            for (channel_voices.getCurrentVoices()) |*voice| {
+                const note_freq = audio.midi.defaultFreq[@enumToInt(voice.note)];
+                //if (bend_ratio >= 1.0) {
+                //    const next_freq = audio.midi.defaultFreq[@enumToInt(voice.note)+bend_distance];
+                //    const diff = next_freq - note_freq;
+                //    voice.renderer.generator.setFreq(note_freq + (diff * (bend_ratio-1)));
+                //} else {
+                //    const prev_freq = audio.midi.defaultFreq[@enumToInt(voice.note)-bend_distance];
+                //    const diff = note_freq - prev_freq;
+                //    voice.renderer.generator.setFreq(prev_freq + (diff * bend_ratio));
+                //}
+                voice.renderer.generator.setFreq(note_freq * getPitchBendRatio(bend_value));
+            }
+        },
+        .channel_pressure => {
+
+        },
         else => {},
     }
+}
+
+fn getPitchBendRatio(bend_value: u14) f32 {
+    //const pitch_bend_dist = 4096 * 12; // normal?
+    const pitch_bend_dist = 4096 / 2; // seaboard?
+    return std.math.pow(f32, 2.0, @intToFloat(f32, @intCast(i15, bend_value) - 8192) / pitch_bend_dist);
+}
+
+//    0 maps to 0
+//    1 maps to (1/8192) (about 0.000122)
+// 8191 maps to (8191/8192) (about 0.99988)
+// 8192 maps to 1
+// 8193 maps to (1 + 1/8191) (about 1.000122)
+// 16382 maps to (1 + 8190/8191) (about 0.99988)
+// 16383 maps to 2
+fn getBendRatio(bend_value: u14) f32 {
+    return
+        if (bend_value >= 8192) 1.0 + (@intToFloat(f32, bend_value - 8192) / 8191.0)
+        else @intToFloat(f32, bend_value) / 8192.0;
 }
 
 pub fn addToEachChannel(channels: []u8, buffer: [*]SamplePoint, value: SamplePoint) void {
