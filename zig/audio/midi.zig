@@ -343,47 +343,61 @@ fn getScale(octave: i5) f32 {
     return neg_scale_table[@intCast(usize, -octave)];
 }
 
+fn sortRatioTable(ratios: [11]f32) [12]f32 {
+    for (ratios) |ratio| {
+        std.debug.assert(ratio > 1.0);
+        std.debug.assert(ratio < 2.0);
+    }
+    var table: [12]f32 = undefined;
+    table[0] = 1.0;
+    std.mem.copy(f32, table[1..], &ratios);
+    std.sort.sort(f32, &table, {}, comptime std.sort.asc(f32));
+    return table;
+}
+
+const just_ratios = sortRatioTable([_]f32 {
+    // Ratios of 2
+    3.0 / 2.0,   // 5      (G  in key of C)
+    // Ratios of 3
+    4.0 / 3.0,   // 4      (F  in key of C)
+    5.0 / 3.0,   // 6      (A  in key of C)
+    // Ratios of 4
+    5.0 / 4.0,   // 3      (E  in key of C)
+    // ----- 6/4 (same as 3/2)
+    // ----- 7/4 (not used in 18th century european music?)
+    // Ratios of 5
+    6.0 / 5.0,   // Flat 3 (Eb in key of C)
+    7.0 / 5.0,   // Flat 5 (Gb in key of C)
+    8.0 / 5.0,   // Flat 6 (Ab in key of C)
+    9.0 / 5.0,  // Flat 7 (Bb in key of C)
+    // Ratios of 6?
+    // -----  7/6 ?
+    // -----  8/6 is 4/3
+    // -----  9/6 is 3/2
+    // ----- 10/6 is 5/3
+    // ----- 11/6 ?
+    // Ratios of 7?
+    // -----  8/7?
+    // -----  9/8?
+    // ----- 10/7?
+    // ----- 11/7?
+    // ----- 12/7?
+    // ----- 13/7?
+    // Ratios of 8
+    9.0 / 8.0, // 2      (D in key of C)
+    // ----- 10/8 (same as 5/4)
+    // ----- 11/8?
+    // ----- 12/8 (same as 3/2)
+    // ----- 13/8 ?
+    // ----- 14/8 (same as 7/4)
+    15.0 / 8.0, //7      (B in key of C)
+    16.0 / 15.0,//Flat 2 (Db in key of C)
+});
+
 fn getJustRatio(interval: u4) f32 {
-    return switch (interval) {
-        0 => 1.0,         // 1      (C  in key of C)
-        // Ratios of 2
-        7 => 3.0 / 2.0,   // 5      (G  in key of C)
-        // Ratios of 3
-        5 => 4.0 / 3.0,   // 4      (F  in key of C)
-        9 => 5.0 / 3.0,   // 6      (A  in key of C)
-        // Ratios of 4
-        4 => 5.0 / 4.0,   // 3      (E  in key of C)
-        // ----- 6/4 (same as 3/2)
-        // ----- 7/4 (not used in 18th century european music?)
-        // Ratios of 5
-        3 => 6.0 / 5.0,   // Flat 3 (Eb in key of C)
-        6 => 7.0 / 5.0,   // Flat 5 (Gb in key of C)
-        8 => 8.0 / 5.0,   // Flat 6 (Ab in key of C)
-        10 => 9.0 / 5.0,  // Flat 7 (Bb in key of C)
-        // Ratios of 6?
-        // -----  7/6 ?
-        // -----  8/6 is 4/3
-        // -----  9/6 is 3/2
-        // ----- 10/6 is 5/3
-        // ----- 11/6 ?
-        // Ratios of 7?
-        // -----  8/7?
-        // -----  9/8?
-        // ----- 10/7?
-        // ----- 11/7?
-        // ----- 12/7?
-        // ----- 13/7?
-        // Ratios of 8
-        2 => 9.0 / 8.0, // 2      (D in key of C)
-        // ----- 10/8 (same as 5/4)
-        // ----- 11/8?
-        // ----- 12/8 (same as 3/2)
-        // ----- 13/8 ?
-        // ----- 14/8 (same as 7/4)
-        11 => 15.0 / 8.0, //7      (B in key of C)
-        1 => 16.0 / 15.0,//Flat 2 (Db in key of C)
-        else => @panic("interval must be between 0 and 11"),
-    };
+    if (interval > 11)
+        unreachable;
+    return just_ratios[interval];
 }
 
 fn justFreqTable(root_note: MidiNote) [127]f32 {
@@ -401,8 +415,6 @@ fn justFreqTable(root_note: MidiNote) [127]f32 {
     }
     return table;
 }
-
-
 
 // TODO: enum not working for some reason?
 pub const MidiMessageCategory = struct {
