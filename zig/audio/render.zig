@@ -243,6 +243,7 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
     switch (msg.kind) {
         .note_off, .note_on => {
             const off = (msg.kind == .note_off);
+            const volume_scale = 0.3;
 
             {
                 const note = @intToEnum(audio.midi.MidiNote, msg.data.note_on.note);
@@ -252,7 +253,7 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
                         global_temp_midi_voices.remove(voice_index);
                     } else {
                         std.log.debug("!!!! setting volume note={} i={}", .{note, voice_index});
-                        global_temp_midi_voices.available_voices[voice_index].renderer.volume = @intToFloat(f32, msg.data.note_on.velocity) / 127;
+                        global_temp_midi_voices.available_voices[voice_index].renderer.volume = @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale;
                     }
                 } else if (!off and msg.data.note_on.velocity > 0) {
                     if (global_temp_midi_voices.count == global_temp_midi_voices.available_voices.len) {
@@ -260,7 +261,7 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
                     } else {
                         std.log.debug("!!!! adding note={}", .{note});
                         global_temp_midi_voices.addAssumeCapacity(note, .{
-                            .volume = @intToFloat(f32, msg.data.note_on.velocity) / 127,
+                            .volume = @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale,
                             .renderer = Render2.singlestep.Saw.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
                         });
                     }
