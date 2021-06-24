@@ -166,7 +166,7 @@ fn go() !void {
 
     var midi_reader: audio.midi.MidiReader = undefined;
     if (UseMidiInstrument) {
-        midi_reader = audio.midi.MidiReader.init(audio.render.tempMidiInstrumentHandler);
+        midi_reader = audio.midi.MidiReader.init(audio.render.addMidiEvent);
         //for (instruments.items) |instrument| {
         //    try instrument.addInputNode(midiInputDevice.asMidiGeneratorNode());
 //      //          .enforce("failed to add midi device input node");

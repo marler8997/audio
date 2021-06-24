@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing = std.testing;
 
 const stdext = @import("stdext");
 usingnamespace stdext.limitarray;
@@ -21,11 +22,46 @@ pub const global = struct {
 
     var mainOutputNode = OutputNode {};
 
-    var event_queue: std.ArrayList(Event) = undefined;
+    var event_queue_mutex: std.Thread.Mutex = std.Thread.Mutex{};
+    var event_queue_open_index: u1 = 0;
+    var event_queues: [2]std.ArrayList(Event) = undefined;
+    pub fn addEvent(event: Event) !void {
+        const held = event_queue_mutex.acquire();
+        defer held.release();
+        try event_queues[event_queue_open_index].append(event);
+    }
 };
 
+pub fn addMidiEvent(timestamp: usize, msg: audio.midi.MidiMsg) void {
+    audio.midi.checkMidiMsg(msg) catch |e| {
+        std.log.err("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", .{});
+        std.log.err("Midi Message Error: {}", .{e});
+    };
+    audio.midi.logMidiMsg(msg);
+    global.addEvent(.{ .timestamp = Event.now(), .kind = .{ .midi = msg } }) catch {
+        std.log.err("dropped MIDI message!!! {}", .{msg});
+    };
+}
+
+
+// there should be something in std for this?
+pub fn allOnes(comptime Uint: type) Uint {
+    return @intCast(Uint, 0) -% 1;
+}
+
+test "allOnes" {
+    try testing.expectEqual(@as(u8, 0xff), allOnes(u8));
+    try testing.expectEqual(@as(u9, 0x1ff), allOnes(u9));
+}
+
 const Event = struct {
-    timestamp: u16, // note: using u16 for now to make sure rolling works
+    //const Timestamp = u5; // note: using low bit types like u5 to make sure rollover works properly
+    const Timestamp = u16; // note: using low bit types like u5 to make sure rollover works properly
+    pub fn now() Timestamp {
+        return @intCast(Timestamp, std.time.milliTimestamp() & allOnes(Timestamp));
+    }
+
+    timestamp: Timestamp,
     kind: union(enum) {
         midi: audio.midi.MidiMsg,
     },
@@ -33,7 +69,8 @@ const Event = struct {
 
 pub fn init() anyerror!void {
     global.rootAudioGenerators = std.ArrayList(*AudioGenerator).init(audio.global.allocator);
-    global.event_queue = std.ArrayList(Event).init(audio.global.allocator);
+    global.event_queues[0] = std.ArrayList(Event).init(audio.global.allocator);
+    global.event_queues[1] = std.ArrayList(Event).init(audio.global.allocator);
 }
 pub fn addRootAudioGenerator(generator: *AudioGenerator) !void {
     try generator.connectOutputNode(generator, &global.mainOutputNode);
@@ -132,6 +169,16 @@ fn renderLoop(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]Sampl
 }
 
 fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) !void {
+    // swap event queues
+    const now = Event.now();
+    const queue_closed_index = blk: {
+        const held = global.event_queue_mutex.acquire();
+        defer held.release();
+        const closed_index = global.event_queue_open_index;
+        global.event_queue_open_index +%= 1;
+        break :blk closed_index;
+    };
+
 
     // TODO: if there are any generators that have a "set" function, then I
     //       could use that first and skip zeroing memory
@@ -140,6 +187,8 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
     // TODO: which one is faster????
     stdext.mem.set(limitPointersToSlice(bufferStart, bufferLimit), 0);
     //stdext.mem.secureZero(limitPointersToSlice(bufferStart, bufferLimit));
+
+
 
     const locked = global.renderLock.acquire();
     defer locked.release();
@@ -151,20 +200,63 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
         try generator.renderFinished(generator, &global.mainOutputNode);
     }
 
-    {
-        var mix = Render2.Mix {
-            .channels = channels,
-            .buffer_start = bufferStart,
-            .buffer_limit = bufferLimit,
-        };
-        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, mix);
-        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, mix);
-        //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, mix);
-        //Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
-        for (global_temp_midi_channel_voices) |*channel_voice| {
-            for (channel_voice.getCurrentVoices()) |*voice| {
-                Render2.renderSingleStepGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
+
+    var frames_left = audio.global.bufferSampleFrameCount;
+    var mix = Render2.Mix {
+        .channels = channels,
+        .buffer_start = bufferStart,
+        .buffer_limit = bufferLimit,
+    };
+    var last_diff: Event.Timestamp = std.math.maxInt(Event.Timestamp);
+    for (global.event_queues[queue_closed_index].items) |*event| {
+        // TODO: is this right?  test with a very small integer type
+        const diff_ms = now -% event.timestamp;
+        if (diff_ms > last_diff) {
+            std.log.warn("the timestamp counter has rolled more than once in the same render!", .{});
+        }
+        last_diff = diff_ms;
+        // convert ms to samples
+        const diff_frames = @floatToInt(u32, std.math.round(
+            @intToFloat(f32, audio.global.sampleFramesPerSec) * (@intToFloat(f32, diff_ms) / 1000)));
+        //std.log.info("{} ms ago ({} frames out of {}): {}", .{diff_ms, diff_frames, audio.global.bufferSampleFrameCount, event.kind});
+
+        const enable_partial_buffer_rendering = true;
+        if (enable_partial_buffer_rendering and diff_frames < frames_left) {
+            const frames_to_render = frames_left - diff_frames;
+            if (frames_to_render > 0) {
+                //std.log.info("partially rendering {} frames", .{frames_to_render});
+                const sample_count = frames_to_render * audio.global.channelCount;
+                const buffer_limit = mix.buffer_start + sample_count;
+                renderMix(.{
+                    .channels = mix.channels,
+                    .buffer_start = mix.buffer_start,
+                    .buffer_limit = buffer_limit
+                });
+                mix.buffer_start = buffer_limit;
+                frames_left -= frames_to_render;
             }
+        }
+
+        switch (event.kind) {
+            .midi => |e| applyMidiToGlobalInstrument(e),
+        }
+    }
+    global.event_queues[queue_closed_index].items.len = 0;
+
+    if (frames_left < audio.global.bufferSampleFrameCount) {
+        //std.log.info("partially rendering the last {} frames", .{frames_left});
+    }
+    renderMix(mix);
+}
+
+fn renderMix(mix: Render2.Mix) void {
+    //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing), &global_render2_thing, mix);
+    //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, mix);
+    //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, mix);
+    //Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
+    for (global_temp_midi_channel_voices) |*channel_voice| {
+        for (channel_voice.getCurrentVoices()) |*voice| {
+            Render2.renderSingleStepGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
         }
     }
 }
@@ -251,6 +343,7 @@ var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chai
     }
 )) { .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}};
 
+
 //var global_temp_midi_render2_instrument = Render2.singlestep.MidiVoice(Render2.singlestep.Volume(Render2.singlestep.Saw)) {
 //    .note = .none,
 //    .renderer = .{
@@ -261,12 +354,8 @@ var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chai
 //        },
 //    },
 //};
-pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void {
-    audio.midi.checkMidiMsg(msg) catch |e| {
-        std.log.err("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", .{});
-        std.log.err("Midi Message Error: {}", .{e});
-    };
-    audio.midi.logMidiMsg(msg);
+pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
+
     const volume_scale = 0.2;
 
     switch (msg.kind) {
