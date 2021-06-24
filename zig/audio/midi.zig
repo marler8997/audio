@@ -416,74 +416,6 @@ fn justFreqTable(root_note: MidiNote) [127]f32 {
     return table;
 }
 
-// TODO: enum not working for some reason?
-pub const MidiMessageCategory = struct {
-    pub const noteOff : u8 = 0x80;
-    pub const noteOn : u8 = 0x90;
-//    localAftertouch = 0xa0,
-//    control = 0xb0,
-//    program = 0xc0,
-//    globalAftertouch = 0xd0,
-//    pitchBend = 0xe0,
-};
-
-pub const MidiControlCode = enum {
-    sustainPedal = 64,
-};
-
-pub const MidiEventType = enum {
-    noteOn = 0,
-    noteOff = 1,
-    sustainPedal = 2,
-};
-
-pub const MidiEvent = struct {
-    //
-    //import audio.midi : MidiNote;
-//
-    timestamp: usize,
-    type: MidiEventType,
-    //union
-    //{
-    //    private static struct NoteOn
-    //    {
-    //        MidiNote note;
-    //        ubyte velocity;
-    //    }
-    //    NoteOn noteOn;
-    //    private static struct NoteOff
-    //    {
-    //        MidiNote note;
-    //        ubyte velocity;
-    //    }
-    //    NoteOff noteOff;
-    //    bool sustainPedal;
-    //}
-    pub fn makeNoteOn(timestamp: usize, note: MidiNote, velocity: u8) MidiEvent {
-        return MidiEvent {
-            .timestamp = timestamp,
-            .type = MidiEventType.noteOn,
-            //.noteOn.note = note,
-            //.noteOn.velocity = velocity,
-        };
-    }
-    pub fn makeNoteOff(timestamp: usize,note: MidiNote) MidiEvent {
-        return MidiEvent {
-            .timestamp = timestamp,
-            .type = MidiEventType.noteOff,
-            //.noteOff.note = note;
-        };
-    }
-    //static makeSustainPedal(size_t timestamp, bool on)
-    //{
-    //    MidiEvent event = void;
-    //    event.timestamp = timestamp;
-    //    event.type = MidiEventType.sustainPedal;
-    //    event.sustainPedal = on;
-    //    return event;
-    //}
-};
-
 //struct MidiNoteMapView(T)
 //{
 //    //private ubyte[MidiNote.max + 1] indexTable;
@@ -730,40 +662,6 @@ pub fn logMidiMsg(msg: MidiMsg) void {
         },
         else => {
             midilog.debug("unknown msg {}", .{msg});
-        },
-    }
-}
-
-pub fn msgToDevice(timestamp: usize, msg: MidiMsg, device: anytype) void {
-    //if (msg.msb_status != 1) return error.StatusMsbIsZero;
-
-    switch (msg.kind) {
-        .note_off, .note_on => {
-            //if (msg.data.note_off.msb_note != 0) return error.DataMsbIsOne;
-            //if (msg.data.note_off.msb_velocity != 0) return error.DataMsbIsOne;
-            std.log.warn("TODO: implement noteoff/noteon to device", .{});
-            //device.addMidiEvent(
-            //    MidiEvent.makeNoteOff(timestamp, @intToEnum(audio.midi.MidiNote, @intCast(u7, note)))) catch |err| {
-            //        midilog.err("failed to add MIDI OFF event: {}", .{err});
-            //};
-        },
-        //.poly_pressure => {
-        //    midilog.debug("poly_pressure channel={} {}", .{msg.status_arg, msg.data.poly_pressure});
-        //},
-        //.control_change => {
-        //    midilog.debug("control_change channel={} {}", .{msg.status_arg, msg.data.control_change});
-        //},
-        //.program_change => {
-        //    midilog.debug("program_change channel={} {}", .{msg.status_arg, msg.data.program_change});
-        //},
-        //.channel_pressure => {
-        //    midilog.debug("channel_pressure channel={} {}", .{msg.status_arg, msg.data.channel_pressure});
-        //},
-        //.pitch_bend => {
-        //    midilog.debug("pitch_bend channel={} {}", .{msg.status_arg, msg.data.pitch_bend});
-        //},
-        else => {
-            midilog.debug("unhandled msg {}", .{msg});
         },
     }
 }

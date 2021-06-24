@@ -49,7 +49,7 @@ pub const MidiGenerator = struct {
     // going to request events from them.
     //void function(T* context, void* instrument) connectInstrument;
 
-    getMidiEvents: fn(self: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent,
+    //getMidiEvents: fn(self: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent,
 
     // This let's the midi input node that it can now clean up all it's events.
     // This function must be called after each buffer is done being rendered.
