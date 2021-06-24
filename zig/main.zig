@@ -369,3 +369,28 @@ fn go() !void {
 //
 //    return aeffect;
 //}
+
+/// override the std log implementation so I can include the thread ID for each log statment
+pub fn log(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const level_txt = switch (level) {
+        .emerg => "emergency",
+        .alert => "alert",
+        .crit => "critical",
+        .err => "error",
+        .warn => "warning",
+        .notice => "notice",
+        .info => "info",
+        .debug => "debug",
+    };
+    const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+    const stderr = std.io.getStdErr().writer();
+    const held = std.debug.getStderrMutex().acquire();
+    defer held.release();
+    nosuspend stderr.print("thread {}: ", .{std.Thread.getCurrentThreadId()}) catch return;
+    nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
+}

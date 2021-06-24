@@ -8,7 +8,9 @@ usingnamespace audio.renderformat;
 const OutputNode = audio.dag.OutputNode;
 const AudioGenerator = audio.dag.AudioGenerator;
 
-
+//////////////////////////////////////////////////////////////////
+// TODO: make this stuff non-global, make render a normal struct
+//////////////////////////////////////////////////////////////////
 pub const global = struct {
     // Meant to lock access to the render node graph to keep nodes
     // or data inside it from being modified during a render.
@@ -18,11 +20,20 @@ pub const global = struct {
     var rootAudioGenerators: std.ArrayList(*AudioGenerator) = undefined;
 
     var mainOutputNode = OutputNode {};
+
+    var event_queue: std.ArrayList(Event) = undefined;
+};
+
+const Event = struct {
+    timestamp: u16, // note: using u16 for now to make sure rolling works
+    kind: union(enum) {
+        midi: audio.midi.MidiMsg,
+    },
 };
 
 pub fn init() anyerror!void {
-
     global.rootAudioGenerators = std.ArrayList(*AudioGenerator).init(audio.global.allocator);
+    global.event_queue = std.ArrayList(Event).init(audio.global.allocator);
 }
 pub fn addRootAudioGenerator(generator: *AudioGenerator) !void {
     try generator.connectOutputNode(generator, &global.mainOutputNode);
@@ -256,11 +267,11 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
         std.log.err("Midi Message Error: {}", .{e});
     };
     audio.midi.logMidiMsg(msg);
+    const volume_scale = 0.2;
 
     switch (msg.kind) {
         .note_off, .note_on => {
             const off = (msg.kind == .note_off);
-            const volume_scale = 0.2;
 
             const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
 
@@ -321,6 +332,10 @@ pub fn tempMidiInstrumentHandler(timestamp: usize, msg: audio.midi.MidiMsg) void
             }
         },
         .channel_pressure => {
+            const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
+            for (channel_voices.getCurrentVoices()) |*voice| {
+                voice.renderer.filters[0].volume = @intToFloat(f32, msg.data.channel_pressure.pressure) / 127 * volume_scale;
+            }
 
         },
         else => {},
