@@ -256,7 +256,7 @@ fn renderMix(mix: Render2.Mix) void {
     //Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
     for (global_temp_midi_channel_voices) |*channel_voice| {
         for (channel_voice.getCurrentVoices()) |*voice| {
-            Render2.renderSingleStepGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
+            Render2.singlestep.renderGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
         }
     }
 }
@@ -337,8 +337,14 @@ pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { 
         self.count -= 1;
     }
 };}
+
+const volume_filter_index = 2;
 var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chain(
     Render2.singlestep.SawGenerator, &[_]type {
+    //Render2.singlestep.SineGenerator, &[_]type {
+        Render2.singlestep.SimpleLowPassFilter,
+        //Render2.singlestep.BypassFilter,
+        Render2.singlestep.CombFilter(10000, 5000),
         Render2.singlestep.VolumeFilter,
     }
 )) { .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}};
@@ -372,7 +378,7 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                         channel_voices.remove(voice_index);
                     } else {
                         std.log.debug("!!!! setting volume note={s} i={}", .{@tagName(note), voice_index});
-                        channel_voices.available_voices[voice_index].renderer.filters[0].volume = @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale;
+                        channel_voices.available_voices[voice_index].renderer.filters[volume_filter_index].volume = @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale;
                     }
                 } else if (!off and msg.data.note_on.velocity > 0) {
                     if (channel_voices.count == channel_voices.available_voices.len) {
@@ -381,7 +387,10 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                         std.log.debug("!!!! adding note={s}", .{@tagName(note)});
                         channel_voices.addAssumeCapacity(note, .{
                             .generator = Render2.singlestep.SawGenerator.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
+                            //.generator = Render2.singlestep.SineGenerator.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
                             .filters = .{
+                                .{ },
+                                .{ .feedforward_gain = 0.2, .feedback_gain = 0.7 },
                                 .{ .volume =  @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale },
                             },
                         });
@@ -423,7 +432,7 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
         .channel_pressure => {
             const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
             for (channel_voices.getCurrentVoices()) |*voice| {
-                voice.renderer.filters[0].volume = @intToFloat(f32, msg.data.channel_pressure.pressure) / 127 * volume_scale;
+                voice.renderer.filters[volume_filter_index].volume = @intToFloat(f32, msg.data.channel_pressure.pressure) / 127 * volume_scale;
             }
 
         },

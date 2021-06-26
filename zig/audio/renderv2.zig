@@ -191,6 +191,43 @@ pub fn Template(comptime Format: type) type { return struct {
         };}
 
 
+        pub const SineGenerator = struct {
+            phase: f32 = 0,
+            phase_increment: f32,
+            pub fn initFreq(freq: f32) @This() {
+                return .{ .phase_increment = freqToPhaseIncrement(freq) };
+            }
+            pub const frequency_knob = Knob {
+                .float_cb = .{
+                    .min = 0.00001,
+                    //.max = audio.global.sampleFramesPerSec,
+                    .max = 999999999999999999,
+                    .cb = freqCb,
+                }
+            };
+            pub fn freqToPhaseIncrement(freq: f32) f32 {
+                return std.math.tau * freq / @intToFloat(f32, audio.global.sampleFramesPerSec);
+            }
+            pub fn setFreq(self: *@This(), freq: f32) void {
+                self.phase_increment = freqToPhaseIncrement(freq);
+            }
+
+            // TODO: I should modify this not to return a sample, but instead, return
+            //       some sort of UnitScale value (from -1 to 1).
+            //       So this would be a UnitScalarGenerator?
+            //       I could create a type that takes a UnitScalarGenerator type and turns it into
+            //       a SampleGenerator.
+            pub fn renderOne(self: *@This()) Sample {
+                const sample = std.math.sin(self.phase);
+                self.phase += self.phase_increment;
+                if (self.phase > std.math.tau) {
+                    self.phase -= std.math.tau;
+                }
+                return sample; // TODO: how do we know what range this signal returns?
+                               //       we could say it returns -1.0 to 1.0 for floats?
+                               //       what about for integers?
+            }
+        };
         pub const SawGenerator = struct {
             next_sample: Sample = 0,
             increment: Sample,
@@ -254,6 +291,50 @@ pub fn Template(comptime Format: type) type { return struct {
                 return Format.scaleSample(sample, self.volume);
             }
         };
+        pub const BypassFilter = struct {
+            pub fn filterOne(self: *@This(), sample: Sample) Sample {
+                return sample;
+            }
+        };
+        pub const SimpleLowPassFilter = struct {
+            last_input_sample: Sample = 0,
+            pub fn filterOne(self: *@This(), sample: Sample) Sample {
+                const out_sample = self.last_input_sample + sample;
+                self.last_input_sample = sample;
+                return out_sample;
+            }
+        };
+
+        // NOTE: can I split the in/out parts into their own componets?
+        //       not sure if I can because the second one in the chain won't
+        //       have the original signal
+        pub fn CombFilter(comptime FeedforwardDelay: comptime_int, comptime FeedbackDelay: comptime_int) type { return struct {
+            const InCursor = std.math.IntFittingRange(0, FeedforwardDelay-1);
+            const OutCursor = std.math.IntFittingRange(0, FeedbackDelay-1);
+
+            feedforward_gain: f32,
+            feedback_gain: f32,
+            // TODO: maybe I should provide an interface to request sample context?
+            in_samples: [FeedforwardDelay]Sample = [_]Sample {0} ** FeedforwardDelay,
+            in_cursor: InCursor = 0,
+            out_samples: [FeedbackDelay]Sample = [_]Sample {0} ** FeedbackDelay,
+            out_cursor: OutCursor = 0,
+
+            pub fn filterOne(self: *@This(), sample: Sample) Sample {
+                self.in_samples[self.in_cursor] = sample;
+                const in_component = self.in_samples[self.in_cursor];
+                self.in_cursor = wrapIncrement(InCursor, self.in_cursor, FeedforwardDelay-1);
+
+                const out_component = self.out_samples[self.out_cursor];
+                const out_sample = sample +
+                    (self.feedforward_gain * in_component) -
+                    (self.feedback_gain * out_component);
+                self.out_samples[self.out_cursor] = out_sample;
+                self.out_cursor = wrapIncrement(OutCursor, self.out_cursor, FeedbackDelay-1);
+                return out_sample;
+            }
+        };}
+
 
         pub fn MidiVoice(comptime Renderer: type) type { return struct {
             renderer: Renderer,
@@ -319,23 +400,29 @@ pub fn Template(comptime Format: type) type { return struct {
         //    voices: []T,
         //
         //};}
-    };
 
-    pub fn renderSingleStepGenerator(comptime T: type, generator: *T, out: Mix) void {
-        comptime std.debug.assert(@typeInfo(@TypeOf(T.renderOne)).Fn.args[0].arg_type == *T);
-        renderSingleStepGeneratorImpl(
-            @ptrToInt(generator),
-            @ptrCast(OpaqueFn(@TypeOf(T.renderOne)), T.renderOne),
-            out);
-    }
-    fn renderSingleStepGeneratorImpl(context: usize, renderOneFn: fn(usize) align(1) Sample, out: Mix) void {
-        var it = out.sampleIterator();
-        while (it.next()) |sample| {
-            sample.add(renderOneFn(context));
+        pub fn renderGenerator(comptime T: type, generator: *T, out: Mix) void {
+            comptime std.debug.assert(@typeInfo(@TypeOf(T.renderOne)).Fn.args[0].arg_type == *T);
+            renderGeneratorImpl(
+                @ptrToInt(generator),
+                @ptrCast(OpaqueFn(@TypeOf(T.renderOne)), T.renderOne),
+                out);
         }
-    }
+        fn renderGeneratorImpl(context: usize, renderOneFn: fn(usize) align(1) Sample, out: Mix) void {
+            var it = out.sampleIterator();
+            while (it.next()) |sample| {
+                sample.add(renderOneFn(context));
+            }
+        }
+    };
 };}
 
+fn wrapIncrement(comptime T: type, x: T, max: T) T {
+    return if (x == max) 0 else (x+1);
+}
+fn wrapDecrement(comptime T: type, x: T, max: T) T {
+    return if (x == 0) max else (x-1);
+}
 
 test "saw" {
     const S = Template(RenderFormatFloat32);
