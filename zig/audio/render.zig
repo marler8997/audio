@@ -311,6 +311,7 @@ pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { 
 
     count: std.math.IntFittingRange(0, count) = 0,
     available_voices: [count]Voice = undefined,
+    bend_value: u14 = 8192,
 
     pub fn getCurrentVoices(self: *@This()) []Voice {
         return self.available_voices[0..self.count];
@@ -343,8 +344,8 @@ var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chai
     Render2.singlestep.SawGenerator, &[_]type {
     //Render2.singlestep.SineGenerator, &[_]type {
         Render2.singlestep.SimpleLowPassFilter,
-        //Render2.singlestep.BypassFilter,
-        Render2.singlestep.CombFilter(10000, 5000),
+        Render2.singlestep.BypassFilter,
+        //Render2.singlestep.CombFilter(10000, 5000),
         Render2.singlestep.VolumeFilter,
     }
 )) { .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}};
@@ -386,11 +387,11 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                     } else {
                         std.log.debug("!!!! adding note={s}", .{@tagName(note)});
                         channel_voices.addAssumeCapacity(note, .{
-                            .generator = Render2.singlestep.SawGenerator.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
+                            .generator = Render2.singlestep.SawGenerator.initFreq(bendFreq(audio.midi.defaultFreq[@enumToInt(note)], channel_voices.bend_value)),
                             //.generator = Render2.singlestep.SineGenerator.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
                             .filters = .{
                                 .{ },
-                                .{ .feedforward_gain = 0.2, .feedback_gain = 0.7 },
+                                .{},//.{ .feedforward_gain = 0.2, .feedback_gain = 0.7 },
                                 .{ .volume =  @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale },
                             },
                         });
@@ -411,8 +412,9 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
         },
         .pitch_bend => {
             const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
+            channel_voices.bend_value = msg.data.pitch_bend.getValue();
+            const bend_ratio = getPitchBendRatio(channel_voices.bend_value);
 
-            const bend_value = msg.data.pitch_bend.getValue();
             //const bend_ratio = getBendRatio(bend_value);
             //const bend_distance = 28; // I think the Seaboard rise assumes this to be 24?
             for (channel_voices.getCurrentVoices()) |*voice| {
@@ -426,7 +428,7 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                 //    const diff = note_freq - prev_freq;
                 //    voice.renderer.generator.setFreq(prev_freq + (diff * bend_ratio));
                 //}
-                voice.renderer.generator.setFreq(note_freq * getPitchBendRatio(bend_value));
+                voice.renderer.generator.setFreq(note_freq * bend_ratio);
             }
         },
         .channel_pressure => {
@@ -440,9 +442,15 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
     }
 }
 
+fn bendFreq(freq: f32, bend_value: u14) f32 {
+    if (bend_value == 8192)
+        return freq;
+    return freq * getPitchBendRatio(bend_value);
+}
+
 fn getPitchBendRatio(bend_value: u14) f32 {
-    //const pitch_bend_dist = 4096 * 12; // normal?
-    const pitch_bend_dist = 4096 / 2; // seaboard?
+    const pitch_bend_dist = 4096 * 12; // normal?
+    //const pitch_bend_dist = 4096 / 2; // seaboard?
     return std.math.pow(f32, 2.0, @intToFloat(f32, @intCast(i15, bend_value) - 8192) / pitch_bend_dist);
 }
 
