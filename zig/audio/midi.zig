@@ -649,13 +649,14 @@ pub fn logMidiMsg(msg: MidiMsg) void {
             midilog.debug("poly_pressure channel={} {}", .{msg.status_arg, msg.data.poly_pressure});
         },
         .control_change => {
-            midilog.debug("control_change channel={} {}", .{msg.status_arg, msg.data.control_change});
+            midilog.debug("control_change channel={} num={} velocity={}", .{
+                msg.status_arg, msg.data.control_change.num, msg.data.control_change.velocity});
         },
         .program_change => {
             midilog.debug("program_change channel={} {}", .{msg.status_arg, msg.data.program_change});
         },
         .channel_pressure => {
-            midilog.debug("channel_pressure channel={} {}", .{msg.status_arg, msg.data.channel_pressure});
+            midilog.debug("channel_pressure channel={} {}", .{msg.status_arg, msg.data.channel_pressure.pressure});
         },
         .pitch_bend => {
             midilog.debug("pitch_bend channel={} {}", .{msg.status_arg, msg.data.pitch_bend.getValue()});

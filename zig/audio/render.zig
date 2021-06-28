@@ -138,9 +138,9 @@ fn renderThread2() !void {
 fn renderLoop(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void {
 
     // Temporary one-time setup
-    global_render2_thing.generator.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.a4));
-    global_render2_thing2.generator.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
-    global_render2_thing3.component.generator.setFreq(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
+    global_render2_thing.generator.unit_generator.increment = Render2.singlestep.SawTrigUnitGenerator.freqToIncrement(audio.midi.getStdFreq(audio.midi.MidiNote.a4));
+    global_render2_thing2.generator.unit_generator.increment = Render2.singlestep.SawTrigUnitGenerator.freqToIncrement(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
+    global_render2_thing3.component.generator.unit_generator.increment = Render2.singlestep.SawTrigUnitGenerator.freqToIncrement(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
     global_render2_thing3.changer.event_sample_time = @floatToInt(usize, @intToFloat(f32, audio.global.sampleFramesPerSec) * 0.3);
 
     try render(channels, bufferStart, bufferLimit);
@@ -267,29 +267,29 @@ const Render2 = renderv2.Template(renderv2.RenderFormatFloat32);
 //    .next_sample = 0,
 //    .increment = 0.005,
 //};
-var global_render2_thing = Render2.singlestep.Chain(Render2.singlestep.SawGenerator, &[_]type {Render2.singlestep.VolumeFilter}) {
-    .generator = .{ .next_sample = 0, .increment = 0 },
+var global_render2_thing = Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type {Render2.singlestep.VolumeFilter}) {
+    .generator = .{ .unit_generator = .{ .increment = undefined } },
     .filters = .{
         .{ .volume = 0.02 },
     },
 };
-var global_render2_thing2 = Render2.singlestep.Chain(Render2.singlestep.SawGenerator, &[_]type {Render2.singlestep.VolumeFilter}) {
-    .generator = .{ .next_sample = 0, .increment = 0 },
+var global_render2_thing2 = Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type {Render2.singlestep.VolumeFilter}) {
+    .generator = .{ .unit_generator = .{ .increment = undefined } },
     .filters = .{
         .{ .volume = 0.02 },
     },
 };
 
 var global_render2_thing3 = Render2.singlestep.AttachedKnob(
-    Render2.singlestep.Chain(Render2.singlestep.SawGenerator, &[_]type {Render2.singlestep.VolumeFilter}),
+    Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type {Render2.singlestep.VolumeFilter}),
     Render2.singlestep.NoteFreqF32KnobChanger,
-    Render2.singlestep.SawGenerator.frequency_knob
+    //Render2.singlestep.SawFullSampleGenerator.frequency_knob
+    Render2.singlestep.SawTrigUnitGenerator.frequency_knob
 ) {
     .component = .{
-        .generator = Render2.singlestep.SawGenerator {
-            .next_sample = 0,
-            .increment = 0,
-        },
+        .generator = .{ .unit_generator = Render2.singlestep.SawTrigUnitGenerator {
+            .increment = undefined,
+        }},
         .filters = .{
             Render2.singlestep.VolumeFilter { .volume = 0.02 },
         },
@@ -302,23 +302,46 @@ var global_render2_thing3 = Render2.singlestep.AttachedKnob(
     }),
 };
 
+pub const known_ccs = [_]u7 { 70 };
 pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { return struct {
     const Index = std.math.IntFittingRange(0, count - 1);
     const Voice = struct {
         renderer: Renderer,
-        note: audio.midi.MidiNote
+        note: audio.midi.MidiNote,
+        current_note_velocity: u7,
+
+        pub fn updateVelocity(self: *@This(), cc_velocity: u7) void {
+            //self.renderer.setVelocity(
+            self.renderer.filters[volume_filter_index].volume = (
+                (@intToFloat(f32, self.current_note_velocity) / 127.0) *
+                volume_scale *
+                (0.5 + @intToFloat(f32, cc_velocity) / 127.0)
+            );
+        }
+
+        pub fn updateCC(self:*@This(), num: u7, velocity: u7) void {
+            switch (num) {
+                70 => self.updateVelocity(velocity), // for now we will hard code 70 to be a volume booster
+                else => {}, // just ignore the rest for now
+            }
+        }
     };
 
     count: std.math.IntFittingRange(0, count) = 0,
     available_voices: [count]Voice = undefined,
     bend_value: u14 = 8192,
+    cc_velocities: [127]u7 = [_]u7 {0} ** 127,
 
     pub fn getCurrentVoices(self: *@This()) []Voice {
         return self.available_voices[0..self.count];
     }
-    pub fn addAssumeCapacity(self:*@This(), note: audio.midi.MidiNote, renderer: Renderer) void {
+    pub fn addAssumeCapacity(self:*@This(), note: audio.midi.MidiNote, on_note_velocity: u7, renderer: Renderer) void {
         std.debug.assert(self.count < self.available_voices.len);
-        self.available_voices[self.count] = .{ .note = note, .renderer = renderer };
+        self.available_voices[self.count] = .{
+            .note = note,
+            .current_note_velocity = on_note_velocity,
+            .renderer = renderer
+        };
         self.count += 1;
     }
     pub fn find(self: *@This(), note: audio.midi.MidiNote) ?Index {
@@ -339,11 +362,12 @@ pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { 
     }
 };}
 
-const volume_filter_index = 2;
+const volume_filter_index = 1;
+const volume_scale = 0.2;
 var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chain(
-    Render2.singlestep.SawGenerator, &[_]type {
+    Render2.singlestep.SawFullSampleGenerator, &[_]type {
     //Render2.singlestep.SineGenerator, &[_]type {
-        Render2.singlestep.SimpleLowPassFilter,
+        //Render2.singlestep.SimpleLowPassFilter,
         Render2.singlestep.BypassFilter,
         //Render2.singlestep.CombFilter(10000, 5000),
         Render2.singlestep.VolumeFilter,
@@ -363,7 +387,6 @@ var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chai
 //};
 pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
 
-    const volume_scale = 0.2;
 
     switch (msg.kind) {
         .note_off, .note_on => {
@@ -386,15 +409,18 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                         std.log.warn("out of voices! note={s}", .{@tagName(note)});
                     } else {
                         std.log.debug("!!!! adding note={s}", .{@tagName(note)});
-                        channel_voices.addAssumeCapacity(note, .{
-                            .generator = Render2.singlestep.SawGenerator.initFreq(bendFreq(audio.midi.defaultFreq[@enumToInt(note)], channel_voices.bend_value)),
+                        channel_voices.addAssumeCapacity(note, msg.data.note_on.velocity, .{
+                            .generator = .{ .unit_generator = Render2.singlestep.SawTrigUnitGenerator.initFreq(bendFreq(audio.midi.defaultFreq[@enumToInt(note)], channel_voices.bend_value)) },
                             //.generator = Render2.singlestep.SineGenerator.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
                             .filters = .{
-                                .{ },
+                                //.{ },
                                 .{},//.{ .feedforward_gain = 0.2, .feedback_gain = 0.7 },
                                 .{ .volume =  @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale },
                             },
                         });
+                        for (known_ccs) |known_cc| {
+                            channel_voices.available_voices[channel_voices.count-1].updateCC(known_cc, channel_voices.cc_velocities[known_cc]);
+                        }
                     }
                 }
             }
@@ -428,7 +454,9 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                 //    const diff = note_freq - prev_freq;
                 //    voice.renderer.generator.setFreq(prev_freq + (diff * bend_ratio));
                 //}
-                voice.renderer.generator.setFreq(note_freq * bend_ratio);
+
+                //voice.renderer.generator.setFreq(note_freq * bend_ratio);
+                voice.renderer.setFreq(note_freq * bend_ratio);
             }
         },
         .channel_pressure => {
@@ -437,6 +465,13 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                 voice.renderer.filters[volume_filter_index].volume = @intToFloat(f32, msg.data.channel_pressure.pressure) / 127 * volume_scale;
             }
 
+        },
+        .control_change => {
+            const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
+            channel_voices.cc_velocities[msg.data.control_change.num] = msg.data.control_change.velocity;
+            for (channel_voices.getCurrentVoices()) |*voice| {
+                voice.updateCC(msg.data.control_change.num, msg.data.control_change.velocity);
+            }
         },
         else => {},
     }

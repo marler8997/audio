@@ -30,6 +30,10 @@ fn OpaqueFn(comptime T: type) type {
 
 pub const RenderFormatFloat32 = struct {
     pub const Sample = f32;
+    pub fn trigUnitToSample(unit: TrigUnit) Sample {
+        std.debug.assert(unit.val >= -1.0 and unit.val <= 1.0);
+        return unit.val;
+    }
     pub fn addPositiveWithWrap(lhs: Sample, rhs: Sample) Sample {
         std.debug.assert(lhs >= -1.0 and lhs <= 1.0);
         std.debug.assert(rhs >= 0.0 and rhs <= 1.0);
@@ -52,6 +56,9 @@ pub const RenderFormatFloat32 = struct {
         return f;
     }
 };
+
+// A TrigUnit goes from -1.0 to 1.0
+pub const TrigUnit = struct { val: f32 };
 
 pub fn Template(comptime Format: type) type { return struct {
     const Sample = Format.Sample;
@@ -121,7 +128,7 @@ pub fn Template(comptime Format: type) type { return struct {
     /// 1. Component:
     ///      fn queryKnobs(knobs: std.ArrayList(Knob)) void;
     /// 2. Generator inherits Component:
-    ///      fn renderOne(self: *Generator) Sample;
+    ///      fn renderOneSample(self: *Generator) Sample;
     /// 2. Filter inherits Component:
     ///      fn filterOne(self: *Filter) Sample;
     ///
@@ -129,11 +136,15 @@ pub fn Template(comptime Format: type) type { return struct {
     /// -------------------------------------------------
     /// 1. Component:
     ///      fn getKnobs() [N]Knob;
-    /// 2. Generator inherits Component:
-    ///      fn renderOne(self: *@This()) Sample;
-    /// 3. Filter inherits Component:
+    /// 2. SampleGenerator inherits Component:
+    //       fn setFreq(self: *@This(), freq: f32) void;
+    ///      fn renderOneSample(self: *@This()) Sample;
+    /// 3. TrigUnitGenerator inherits Component:
+    //       fn setFreq(self: *@This(), freq: f32) void;
+    ///      fn renderOneTrigUnit(self: *@This()) TrigUnit;
+    /// 4. Filter inherits Component:
     ///      fn filterOne(self: *@This()) Sample;
-    /// 4. KnobChanger inherits Component:
+    /// 5. KnobChanger inherits Component:
     //       fn nextSample(self: *@This(), knob: Knob, knob_context: usize) void;
     pub const singlestep = struct {
         // These are the Runtime Interfaces I may or may not use
@@ -143,6 +154,7 @@ pub fn Template(comptime Format: type) type { return struct {
         //};
         //pub const Generator = struct {
         //    component: Component,
+        //    setFreq: fn(self: *Generator) void
         //    renderOne: fn(self: *Generator) Sample,
         //};
         //pub const Filter = struct {
@@ -161,14 +173,20 @@ pub fn Template(comptime Format: type) type { return struct {
                 // TODO: implement this
             }
 
-            pub fn renderOne(self: *@This()) Sample {
-                var sample = self.generator.renderOne();
+            pub fn renderOneSample(self: *@This()) Sample {
+                var sample = self.generator.renderOneSample();
                 inline for (std.meta.fields(FilterTuple)) |field| {
                     sample = @field(self.filters, field.name).filterOne(sample);
                 }
                 return sample;
             }
+
+            usingnamespace ForwardSetFreq(*@This(), "generator");
         };}
+
+        pub fn ForwardSetFreq(comptime T: type, comptime field: []const u8) type { return struct {
+            pub fn setFreq(self: T, freq: f32) void { @field(self, field).setFreq(freq); }
+        }; }
 
         /// Attach a KnobChanger to a componenet
         pub fn AttachedKnob(comptime Component: type, comptime KnobChanger: type, comptime knob: Knob) type { return struct {
@@ -182,10 +200,10 @@ pub fn Template(comptime Format: type) type { return struct {
                 // TODO: implement this
             }
 
-            usingnamespace if (@hasDecl(Component, "renderOne")) struct {
-                pub fn renderOne(self: *Self) Sample {
+            usingnamespace if (@hasDecl(Component, "renderOneSample")) struct {
+                pub fn renderOneSample(self: *Self) Sample {
                     self.changer.nextSample(knob, @ptrToInt(&self.component));
-                    return self.component.renderOne();
+                    return self.component.renderOneSample();
                 }
             } else @compileError("unknown component type or not implemented: " ++ @typeName(Component));
         };}
@@ -217,7 +235,7 @@ pub fn Template(comptime Format: type) type { return struct {
             //       So this would be a UnitScalarGenerator?
             //       I could create a type that takes a UnitScalarGenerator type and turns it into
             //       a SampleGenerator.
-            pub fn renderOne(self: *@This()) Sample {
+            pub fn renderOneSample(self: *@This()) Sample {
                 const sample = std.math.sin(self.phase);
                 self.phase += self.phase_increment;
                 if (self.phase > std.math.tau) {
@@ -228,9 +246,9 @@ pub fn Template(comptime Format: type) type { return struct {
                                //       what about for integers?
             }
         };
-        pub const SawGenerator = struct {
-            next_sample: Sample = 0,
-            increment: Sample,
+        pub const SawTrigUnitGenerator = struct {
+            next_unit: TrigUnit = .{ .val = 0 },
+            increment: TrigUnit,
             pub fn init() @This() {
                 return .{ .increment = 0 };
             }
@@ -256,25 +274,42 @@ pub fn Template(comptime Format: type) type { return struct {
                     .{ .name = "frequency", .knob = frequency_knob },
                 };
             }
-            pub fn freqToIncrement(frequency: f32) Sample {
-                return frequency / Format.intToSample(audio.global.sampleFramesPerSec);
+            pub fn freqToIncrement(frequency: f32) TrigUnit {
+                // TODO: what to do if frequency ratio is greater than 2.0 ???
+                return .{ .val = frequency / @intToFloat(f32, audio.global.sampleFramesPerSec) };
             }
             fn freqCb(context: usize, freq_ref: *f32, access: Access) void {
-                const self = @intToPtr(*SawGenerator, context);
+                const self = @intToPtr(*SawTrigUnitGenerator, context);
                 switch (access) {
-                    .get => freq_ref.* = Format.sampleToF32(self.increment) * @intToFloat(f32, audio.global.sampleFramesPerSec),
+                    .get => freq_ref.* = self.increment.val * @intToFloat(f32, audio.global.sampleFramesPerSec),
                     .set => self.increment = freqToIncrement(freq_ref.*),
                 }
             }
             pub fn setFreq(self: *@This(), freq: f32) void {
                 self.increment = freqToIncrement(freq);
             }
-            pub fn renderOne(self: *@This()) Sample {
-                const sample = self.next_sample;
-                self.next_sample = Format.addPositiveWithWrap(sample, self.increment);
-                return sample;
+            pub fn renderOneTrigUnit(self: *@This()) TrigUnit {
+                const unit = self.next_unit;
+                self.next_unit = .{ .val = unit.val + self.increment.val };
+                while (self.next_unit.val > 1.0) {
+                    self.next_unit.val -= 2.0;
+                }
+                return unit;
             }
         };
+        pub const SawFullSampleGenerator = TrigUnitToFullSampleGenerator(SawTrigUnitGenerator);
+
+        pub fn TrigUnitToFullSampleGenerator(comptime TrigUnitGenerator: type) type { return struct {
+            unit_generator: TrigUnitGenerator,
+            pub fn renderOneSample(self: *@This()) Sample {
+                return Format.trigUnitToSample(self.unit_generator.renderOneTrigUnit());
+            }
+            usingnamespace ForwardSetFreq(*@This(), "unit_generator");
+        }; }
+
+
+
+
         pub const VolumeFilter = struct {
             volume: f32,
             pub fn getKnobs() [1]Knob {
@@ -339,8 +374,8 @@ pub fn Template(comptime Format: type) type { return struct {
         pub fn MidiVoice(comptime Renderer: type) type { return struct {
             renderer: Renderer,
             note: audio.midi.MidiNote,
-            pub fn renderOne(self: *@This()) Sample {
-                return self.renderer.renderOne();
+            pub fn renderOneSample(self: *@This()) Sample {
+                return self.renderer.renderOneSample();
             }
         };}
 
@@ -391,9 +426,9 @@ pub fn Template(comptime Format: type) type { return struct {
         //pub fn Automation(comptime Renderer: type, comptime Automater: type) type { return struct {
         //    renderer: Renderer,
         //    automater: Automater,
-        //    pub fn renderOne(self: *@This()) Sample {
+        //    pub fn renderOneSample(self: *@This()) Sample {
         //        self.automater.automate(&self.renderer);
-        //        return self.renderer.renderOne();
+        //        return self.renderer.renderOneSample();
         //    }
         //};}
         //pub const Midi(comptime T: type) type { return struct {
@@ -402,16 +437,16 @@ pub fn Template(comptime Format: type) type { return struct {
         //};}
 
         pub fn renderGenerator(comptime T: type, generator: *T, out: Mix) void {
-            comptime std.debug.assert(@typeInfo(@TypeOf(T.renderOne)).Fn.args[0].arg_type == *T);
+            comptime std.debug.assert(@typeInfo(@TypeOf(T.renderOneSample)).Fn.args[0].arg_type == *T);
             renderGeneratorImpl(
                 @ptrToInt(generator),
-                @ptrCast(OpaqueFn(@TypeOf(T.renderOne)), T.renderOne),
+                @ptrCast(OpaqueFn(@TypeOf(T.renderOneSample)), T.renderOneSample),
                 out);
         }
-        fn renderGeneratorImpl(context: usize, renderOneFn: fn(usize) align(1) Sample, out: Mix) void {
+        fn renderGeneratorImpl(context: usize, renderOneSampleFn: fn(usize) align(1) Sample, out: Mix) void {
             var it = out.sampleIterator();
             while (it.next()) |sample| {
-                sample.add(renderOneFn(context));
+                sample.add(renderOneSampleFn(context));
             }
         }
     };
