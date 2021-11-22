@@ -1,16 +1,19 @@
-const win32 = @import("win32");
-usingnamespace win32.foundation;
-usingnamespace win32.system.system_services;
+const win32 = struct {
+    usingnamespace @import("win32");
+    usingnamespace @import("win32").foundation;
+    usingnamespace @import("win32").system.system_services;
+    usingnamespace @import("win32").media.audio;
+};
 
 // This type is not generated in zigwin32 yet because it uses a nested type
 pub const KEY_EVENT_RECORD = extern struct {
-    bKeyDown: BOOL,
+    bKeyDown: win32.BOOL,
     wRepeatCount: u16,
     wVirtualKeyCode: u16,
     wVirtualScanCode: u16,
     uChar: extern union {
         UnicodeChar: u16,
-        AsciiChar: CHAR,
+        AsciiChar: win32.CHAR,
     },
     dwControlKeyState: u32,
 };
@@ -28,7 +31,7 @@ pub const INPUT_RECORD = extern struct {
 
 // This type is not generated in zigwin32 yet because it uses a nested type
 pub const WAVEFORMATEXTENSIBLE  = extern struct {
-    Format : win32.media.multimedia.WAVEFORMATEX,
+    Format : win32.WAVEFORMATEX,
     //Samples : extern union {
     //    wValidBitsPerSample : u16,
     //    wSamplesPerBlock : u16,

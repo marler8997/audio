@@ -3,6 +3,9 @@ const audio = @import("../audio.zig");
 
 // TODO: move this
 pub fn isValidCall(func: anytype, args: anytype) bool {
+    _ = func;
+    _ = args;
+    // TODO: implement this maybe?
     return true;
 }
 pub fn enforceValidCall(func: anytype, args: anytype) void {
@@ -24,7 +27,7 @@ fn OpaqueFn(comptime T: type) type {
                 .arg_type = usize,
             }} ++ info.args[1..],
         }}),
-        else => @compileError("expected an Fn but got " ++ @typeName(@TypeOf(func))),
+        else => @compileError("expected an Fn but got " ++ @typeName(T)),
     }
 }
 
@@ -209,43 +212,43 @@ pub fn Template(comptime Format: type) type { return struct {
         };}
 
 
-        pub const SineGenerator = struct {
-            phase: f32 = 0,
-            phase_increment: f32,
-            pub fn initFreq(freq: f32) @This() {
-                return .{ .phase_increment = freqToPhaseIncrement(freq) };
-            }
-            pub const frequency_knob = Knob {
-                .float_cb = .{
-                    .min = 0.00001,
-                    //.max = audio.global.sampleFramesPerSec,
-                    .max = 999999999999999999,
-                    .cb = freqCb,
-                }
-            };
-            pub fn freqToPhaseIncrement(freq: f32) f32 {
-                return std.math.tau * freq / @intToFloat(f32, audio.global.sampleFramesPerSec);
-            }
-            pub fn setFreq(self: *@This(), freq: f32) void {
-                self.phase_increment = freqToPhaseIncrement(freq);
-            }
-
-            // TODO: I should modify this not to return a sample, but instead, return
-            //       some sort of UnitScale value (from -1 to 1).
-            //       So this would be a UnitScalarGenerator?
-            //       I could create a type that takes a UnitScalarGenerator type and turns it into
-            //       a SampleGenerator.
-            pub fn renderOneSample(self: *@This()) Sample {
-                const sample = std.math.sin(self.phase);
-                self.phase += self.phase_increment;
-                if (self.phase > std.math.tau) {
-                    self.phase -= std.math.tau;
-                }
-                return sample; // TODO: how do we know what range this signal returns?
-                               //       we could say it returns -1.0 to 1.0 for floats?
-                               //       what about for integers?
-            }
-        };
+        //pub const SineGenerator = struct {
+        //    phase: f32 = 0,
+        //    phase_increment: f32,
+        //    pub fn initFreq(freq: f32) @This() {
+        //        return .{ .phase_increment = freqToPhaseIncrement(freq) };
+        //    }
+        //    pub const frequency_knob = Knob {
+        //        .float_cb = .{
+        //            .min = 0.00001,
+        //            //.max = audio.global.sampleFramesPerSec,
+        //            .max = 999999999999999999,
+        //            .cb = freqCb,
+        //        }
+        //    };
+        //    pub fn freqToPhaseIncrement(freq: f32) f32 {
+        //        return std.math.tau * freq / @intToFloat(f32, audio.global.sampleFramesPerSec);
+        //    }
+        //    pub fn setFreq(self: *@This(), freq: f32) void {
+        //        self.phase_increment = freqToPhaseIncrement(freq);
+        //    }
+        //
+        //    // TODO: I should modify this not to return a sample, but instead, return
+        //    //       some sort of UnitScale value (from -1 to 1).
+        //    //       So this would be a UnitScalarGenerator?
+        //    //       I could create a type that takes a UnitScalarGenerator type and turns it into
+        //    //       a SampleGenerator.
+        //    pub fn renderOneSample(self: *@This()) Sample {
+        //        const sample = std.math.sin(self.phase);
+        //        self.phase += self.phase_increment;
+        //        if (self.phase > std.math.tau) {
+        //            self.phase -= std.math.tau;
+        //        }
+        //        return sample; // TODO: how do we know what range this signal returns?
+        //                       //       we could say it returns -1.0 to 1.0 for floats?
+        //                       //       what about for integers?
+        //    }
+        //};
         pub const SawTrigUnitGenerator = struct {
             next_unit: TrigUnit = .{ .val = 0 },
             increment: TrigUnit,
@@ -328,6 +331,7 @@ pub fn Template(comptime Format: type) type { return struct {
         };
         pub const BypassFilter = struct {
             pub fn filterOne(self: *@This(), sample: Sample) Sample {
+                _ = self;
                 return sample;
             }
         };

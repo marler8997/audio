@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const testing = std.testing;
 
@@ -6,7 +7,7 @@ const midilog = std.log.scoped(.midi);
 pub const ReaderCallback = fn(timestamp: usize, msg: MidiMsg) void;
 
 pub const MidiReader =
-    if (std.builtin.os.tag == .windows) @import("windows/MidiReader.zig")
+    if (builtin.os.tag == .windows) @import("windows/MidiReader.zig")
     else @compileError("Unuspported OS");
 
 pub const MidiNote = enum(u7) {

@@ -1,8 +1,8 @@
 const stdext = @import("stdext");
-usingnamespace stdext.limitarray;
 
 const audio = @import("../audio.zig");
-usingnamespace audio.renderformat;
+const SamplePoint = audio.renderformat.SamplePoint;
+const RenderFormat = audio.renderformat.RenderFormat;
 const OutputNode = audio.dag.OutputNode;
 const AudioGenerator = audio.dag.AudioGenerator;
 
@@ -30,15 +30,19 @@ pub const SawGenerator = struct {
         };
     }
     fn connectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void {
-        var self = @fieldParentPtr(SawGenerator, "generator", base);
+        //var self = @fieldParentPtr(SawGenerator, "generator", base);
+        _ = base;
+        _ = outputNode;
     }
-    fn disconnectOutputNode(base: *AudioGenerator, ouptutNode: *OutputNode) anyerror!void {
-        var self = @fieldParentPtr(SawGenerator, "generator", base);
+    fn disconnectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void {
+        //var self = @fieldParentPtr(SawGenerator, "generator", base);
+        _ = base;
+        _ = outputNode;
     }
     fn mix(base: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void {
         var self = @fieldParentPtr(SawGenerator, "generator", base);
         var buffer = bufferStart;
-        while(ptrLessThan(buffer, bufferLimit)) : (buffer += channels.len) {
+        while(stdext.limitarray.ptrLessThan(buffer, bufferLimit)) : (buffer += channels.len) {
             const samplePoint = RenderFormat.f32ToSamplePoint(
                 self.volume * RenderFormat.MaxAmplitudeF32 * self.nextSamplePoint * 0.5);
             audio.render.addToEachChannel(channels, buffer, samplePoint);
@@ -48,6 +52,8 @@ pub const SawGenerator = struct {
         }
     }
     fn renderFinished(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void {
-        var self = @fieldParentPtr(SawGenerator, "generator", base);
+        //var self = @fieldParentPtr(SawGenerator, "generator", base);
+        _ = base;
+        _ = outputNode;
     }
 };

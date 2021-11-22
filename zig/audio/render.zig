@@ -2,10 +2,10 @@ const std = @import("std");
 const testing = std.testing;
 
 const stdext = @import("stdext");
-usingnamespace stdext.limitarray;
+const limitarray = stdext.limitarray;
 
 const audio = @import("../audio.zig");
-usingnamespace audio.renderformat;
+const SamplePoint = audio.renderformat.SamplePoint;
 const OutputNode = audio.dag.OutputNode;
 const AudioGenerator = audio.dag.AudioGenerator;
 
@@ -26,13 +26,14 @@ pub const global = struct {
     var event_queue_open_index: u1 = 0;
     var event_queues: [2]std.ArrayList(Event) = undefined;
     pub fn addEvent(event: Event) !void {
-        const held = event_queue_mutex.acquire();
-        defer held.release();
+        event_queue_mutex.lock();
+        defer event_queue_mutex.unlock();
         try event_queues[event_queue_open_index].append(event);
     }
 };
 
 pub fn addMidiEvent(timestamp: usize, msg: audio.midi.MidiMsg) void {
+    _ = timestamp;
     audio.midi.checkMidiMsg(msg) catch |e| {
         std.log.err("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", .{});
         std.log.err("Midi Message Error: {}", .{e});
@@ -81,7 +82,7 @@ pub fn addRootAudioGenerator(generator: *AudioGenerator) !void {
     try global.rootAudioGenerators.append(generator);
 }
 
-pub fn renderThreadEntry(context: void) void {
+pub fn renderThreadEntry(_: void) void {
     std.log.debug("renderThread started!", .{});
     const result = renderThread2();
     if (result) {
@@ -172,8 +173,8 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
     // swap event queues
     const now = Event.now();
     const queue_closed_index = blk: {
-        const held = global.event_queue_mutex.acquire();
-        defer held.release();
+        global.event_queue_mutex.lock();
+        defer global.event_queue_mutex.unlock();
         const closed_index = global.event_queue_open_index;
         global.event_queue_open_index +%= 1;
         break :blk closed_index;
@@ -185,13 +186,13 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
     //
 
     // TODO: which one is faster????
-    stdext.mem.set(limitPointersToSlice(bufferStart, bufferLimit), 0);
+    stdext.mem.set(limitarray.limitPointersToSlice(bufferStart, bufferLimit), 0);
     //stdext.mem.secureZero(limitPointersToSlice(bufferStart, bufferLimit));
 
 
 
-    const locked = global.renderLock.acquire();
-    defer locked.release();
+    global.renderLock.lock();
+    defer global.renderLock.unlock();
     //logDebug("render");
     for (global.rootAudioGenerators.items) |generator| {
         try generator.mix(generator, channels, bufferStart, bufferLimit);

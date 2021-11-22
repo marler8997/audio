@@ -174,7 +174,8 @@ fn go() !void {
         try midi_reader.start(0); // just hardcode MIDI device 0 for now
     }
 
-    const renderThread = try std.Thread.spawn(audio.render.renderThreadEntry, {});
+    const renderThread = try std.Thread.spawn(.{}, audio.render.renderThreadEntry, .{{}});
+    _ = renderThread;
 
 
 //    {
@@ -377,20 +378,11 @@ pub fn log(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const level_txt = switch (level) {
-        .emerg => "emergency",
-        .alert => "alert",
-        .crit => "critical",
-        .err => "error",
-        .warn => "warning",
-        .notice => "notice",
-        .info => "info",
-        .debug => "debug",
-    };
+    const level_txt = comptime level.asText();
     const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
     const stderr = std.io.getStdErr().writer();
-    const held = std.debug.getStderrMutex().acquire();
-    defer held.release();
-    nosuspend stderr.print("thread {}: ", .{std.Thread.getCurrentThreadId()}) catch return;
+    std.debug.getStderrMutex().lock();
+    defer std.debug.getStderrMutex().unlock();
+    nosuspend stderr.print("thread {}: ", .{std.Thread.getCurrentId()}) catch return;
     nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
 }

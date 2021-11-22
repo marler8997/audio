@@ -1,3 +1,4 @@
+const std = @import("std");
 const stdext = @import("../stdext.zig");
 
 // TODO: this should be in the standard library

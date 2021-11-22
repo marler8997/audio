@@ -2,13 +2,17 @@ const builtin = @import("builtin");
 const std = @import("std");
 const inputlog = std.log.scoped(.input);
 
+const win32 = struct {
+    usingnamespace @import("win32").ui.input.keyboard_and_mouse;
+};
+
 const audio = @import("../audio.zig");
 
 
 const global = struct {
     var inputThreadMutex = std.Thread.Mutex {};
     var inputThreadRunning = false;
-    var inputThread : *std.Thread = undefined;
+    var inputThread : std.Thread = undefined;
     //KeyHandler!void[256] keyHandlers;
 };
 
@@ -181,28 +185,28 @@ const global = struct {
 //}
 //
 pub fn startInputThread() !void {
-    const lock = global.inputThreadMutex.acquire();
-    defer lock.release();
+    global.inputThreadMutex.lock();
+    defer global.inputThreadMutex.unlock();
 
     if (!global.inputThreadRunning)
     {
-        global.inputThread = try std.Thread.spawn(inputThreadEntry, {});
+        global.inputThread = try std.Thread.spawn(.{}, inputThreadEntry, .{{}});
         global.inputThreadRunning = true;
     }
 }
 pub fn joinInputThread() void {
-    var inputThreadCached : *std.Thread = undefined;
+    var inputThreadCached : std.Thread = undefined;
     {
-        const lock = global.inputThreadMutex.acquire();
-        defer lock.release();
+        global.inputThreadMutex.lock();
+        defer global.inputThreadMutex.unlock();
         if (!global.inputThreadRunning)
             return;
         inputThreadCached = global.inputThread;
     }
-    inputThreadCached.wait();
+    inputThreadCached.join();
 }
 
-pub fn inputThreadEntry(context: void) void {
+pub fn inputThreadEntry(_: void) void {
     inputlog.debug("inputThread started!", .{});
     const result = inputThread2();
     if (result) {
@@ -222,10 +226,10 @@ fn inputThread2() !void {
         for (try inputEvents.read()) |*inputEvent| {
             if (inputEvent.isKeyEvent()) |keyEvent| {
                 const code = keyEvent.getKeyCode();
-                const down = keyEvent.getKeyDown();
+                //const down = keyEvent.getKeyDown();
                 //logDebug("KEY_EVENT code={} {}", code, if (down) "down" else "up");
 
-                if (code == audio.osinput.KEY_ESCAPE) {
+                if (code == @enumToInt(win32.VK_ESCAPE)) {
                     inputlog.info("ESC key pressed", .{});
                     break :inputLoop;
                 }

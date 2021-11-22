@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn dumpData(comptime prefix: []const u8, data: []u8) void {
     for (data) |byte, index | {
-        std.debug.warn(prefix ++ "[{}] = {}\n", index, data[index]);
+        std.debug.warn(prefix ++ "[{}] = {}\n", index, byte);
     }
 }
 pub fn ptrData(data: anytype) []u8 {

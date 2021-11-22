@@ -1,5 +1,5 @@
 const audio = @import("../../audio.zig");
-usingnamespace audio.renderformat;
+const SamplePoint = audio.renderformat.SamplePoint;
 
 pub const funcs = audio.backend.BackendFuncs {
     .setup = notImpl,
@@ -13,5 +13,6 @@ fn notImpl() anyerror!void {
     return error.NotImplemented;
 }
 fn writeBufferNotImpl(renderBuffer: [*]const SamplePoint) anyerror!void {
+    _ = renderBuffer;
     return error.NotImplemented;
 }

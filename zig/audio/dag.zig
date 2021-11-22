@@ -1,11 +1,10 @@
 const std = @import("std");
 
 const stdext = @import("stdext");
-usingnamespace stdext.limitarray;
 
 const audio = @import("../audio.zig");
-usingnamespace audio.renderformat;
-usingnamespace audio.midi;
+const midi = audio.midi;
+const SamplePoint = audio.renderformat.SamplePoint;
 
 
 pub const OutputNode = struct {
@@ -31,11 +30,11 @@ pub const MidiInstrument = struct {
     audioGenerator: AudioGenerator,
     inputNodes: std.ArrayList(*MidiGenerator),
 
-    pub fn sendInputNodesRenderFinished() void {
-        for (inputNodes) |inputNode| {
-            inputNodes.renderFinished(inputNodes[i], &this);
-        }
-    }
+    //pub fn sendInputNodesRenderFinished() void {
+    //    for (inputNodes) |inputNode| {
+    //        inputNodes.renderFinished(inputNodes[i], &this);
+    //    }
+    //}
     pub fn addInputNode(self: *MidiInstrument, inputNode: *MidiGenerator) !void {
         return self.inputNodes.append(inputNode);
     }
@@ -60,57 +59,59 @@ pub const MidiGeneratorTypeAImpl = struct {
 };
 
 //struct MidiGeneratorTemplate(InputDevice)
-pub const MidiGeneratorTypeA = struct {
-//    import mar.arraybuilder : ArrayBuilder;
-//    import audio.midi : MidiNote, MidiNoteMap;
-//
-//    mixin InheritBaseTemplate!MidiGenerator;
-    midiGenerator: MidiGenerator,
-//    //bool[MidiNote.max + 1] onMap;
-    midiEvents: std.ArrayList(MidiEvent),
-//    InputDevice inputDevice;
-//
-    pub fn init() @This() {
-        return @This() {
-            .midiGenerator = MidiGenerator {
-                .getMidiEvents = getMidiEvents,
-                .renderFinished = renderFinished,
-            },
-            .midiEvents = std.ArrayList(MidiEvent).init(audio.global.allocator),
-        };
-    }
-
-    pub fn addMidiEvent(self: *MidiGeneratorTypeA, event: MidiEvent) !void {
-        const locked = audio.render.global.renderLock.acquire();
-        defer locked.release();
-        // TODO: make sure it is in order by timestamp
-        try self.midiEvents.append(event);
-    }
-
-    fn getMidiEvents(base: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent {
-        var self = @fieldParentPtr(@This(), "midiGenerator", base);
-        //if (self.midiEvents.len > 0) logDebug("returning {} midi events", self.midiEvents.len);
-        return self.midiEvents.items;
-    }
-    fn renderFinished(base: *MidiGenerator, instrument: *MidiInstrument) void {
-        var self = @fieldParentPtr(@This(), "midiGenerator", base);
-        // NOTE: I'm not sure I want this to re-allocate
-        self.midiEvents.shrinkRetainingCapacity(0);
-    }
-//    //
-//    // Input Device forwarding functions
-//    //
-//    final passfail stopMidiDeviceInput(T...)(T args)
-//    {
-//        pragma(inline, true);
-//        return InputDevice.stopMidiDeviceInput(&this, args);
+//pub const MidiGeneratorTypeA = struct {
+////    import mar.arraybuilder : ArrayBuilder;
+////    import audio.midi : MidiNote, MidiNoteMap;
+////
+////    mixin InheritBaseTemplate!MidiGenerator;
+//    midiGenerator: MidiGenerator,
+////    //bool[MidiNote.max + 1] onMap;
+//    midiEvents: std.ArrayList(midi.MidiEvent),
+////    InputDevice inputDevice;
+////
+//    pub fn init() @This() {
+//        return @This() {
+//            .midiGenerator = MidiGenerator {
+//                .getMidiEvents = getMidiEvents,
+//                .renderFinished = renderFinished,
+//            },
+//            .midiEvents = std.ArrayList(MidiEvent).init(audio.global.allocator),
+//        };
 //    }
-//    final passfail startMidiDeviceInput(T...)(T args)
-//    {
-//        pragma(inline, true);
-//        return InputDevice.startMidiDeviceInput(&this, args);
+//
+//    pub fn addMidiEvent(self: *MidiGeneratorTypeA, event: MidiEvent) !void {
+//        const locked = audio.render.global.renderLock.acquire();
+//        defer locked.release();
+//        // TODO: make sure it is in order by timestamp
+//        try self.midiEvents.append(event);
 //    }
-};
+//
+//    fn getMidiEvents(base: *MidiGenerator, instrument: *midi.MidiInstrument) []MidiEvent {
+//        _ = instrument;
+//        var self = @fieldParentPtr(@This(), "midiGenerator", base);
+//        //if (self.midiEvents.len > 0) logDebug("returning {} midi events", self.midiEvents.len);
+//        return self.midiEvents.items;
+//    }
+//    fn renderFinished(base: *MidiGenerator, instrument: *midi.MidiInstrument) void {
+//        _ = instrument;
+//        var self = @fieldParentPtr(@This(), "midiGenerator", base);
+//        // NOTE: I'm not sure I want this to re-allocate
+//        self.midiEvents.shrinkRetainingCapacity(0);
+//    }
+////    //
+////    // Input Device forwarding functions
+////    //
+////    final passfail stopMidiDeviceInput(T...)(T args)
+////    {
+////        pragma(inline, true);
+////        return InputDevice.stopMidiDeviceInput(&this, args);
+////    }
+////    final passfail startMidiDeviceInput(T...)(T args)
+////    {
+////        pragma(inline, true);
+////        return InputDevice.startMidiDeviceInput(&this, args);
+////    }
+//};
 
 //void addToEachChannel(ubyte[] channels, SamplePoint* buffer, SamplePoint value)
 //{
@@ -254,6 +255,7 @@ const SawOscillatorMidiInstrumentTypeA = struct {
     //    float increment;
     //}
     fn newNote(base: *MidiInstrumentTypeAImpl) void {//, event: *MidiEvent) void {
+        _ = base;
         //const self = @fieldParentPtr(SawOscillatorMidiInstrumentTypeA, "midiInstrumentTypeAImpl", base);
         //self.next_sample_point = 0;
         //self.increment = audio.oscillators.sawFrequencyToIncrement(defaultFreq[event.noteOn.note]);
@@ -263,11 +265,11 @@ const SawOscillatorMidiInstrumentTypeA = struct {
     //    state.nextSamplePoint = 0;
     //    state.increment = sawFrequencyToIncrement(defaultFreq[event.noteOn.note]);
     //}
-    fn reattackNote(base: *MidiInstrumentTypeAImpl) void { }
+    fn reattackNote(base: *MidiInstrumentTypeAImpl) void { _ = base; }
     //static void reattackNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     //{
     //}
-    fn renderNote(base: *MidiInstrumentTypeAImpl) void { }
+    fn renderNote(base: *MidiInstrumentTypeAImpl) void { _ = base; }
     //static void renderNote(ref OscillatorInstrumentData instrument, NoteState* state,
     //    ubyte[] channels, SamplePoint* buffer)
     //{
@@ -564,16 +566,19 @@ const MidiInstrumentTypeA = struct {
 //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    fn connectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void { }
-    fn disconnectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void { }
+    fn connectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void { _ = base; _ = outputNode; }
+    fn disconnectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void { _ = base; _ = outputNode; }
     fn renderFinished(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void {
+        _ = base;
+        _ = outputNode;
 //        //logDebug(typeof(this).stringof, " renderFinished ", outputNode);
 //        me.asBase.sendInputNodesRenderFinished();
     }
     fn mix(base: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void {
+        _ = base;
         var buffer = bufferStart;
         var frameIndex : u32 = 0;
-        while (ptrLessThan(buffer, bufferLimit)) : ({buffer += channels.len; frameIndex += 1;}) {
+        while (stdext.limitarray.ptrLessThan(buffer, bufferLimit)) : ({buffer += channels.len; frameIndex += 1;}) {
 
         }
 

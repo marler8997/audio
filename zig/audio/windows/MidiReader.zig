@@ -3,8 +3,10 @@ const midilog = std.log.scoped(.midi);
 
 const audio = @import("../../audio.zig");
 
-const win32 = @import("win32");
-usingnamespace win32.media.multimedia;
+const win32 = struct {
+    usingnamespace @import("win32").media;
+    usingnamespace @import("win32").media.audio;
+};
 //usingnamespace @import("win32missing.zig");
 
 const State = enum {
@@ -15,7 +17,7 @@ const State = enum {
 
 callback: audio.midi.ReaderCallback,
 state: State,
-midiHandle: HMIDIIN,
+midiHandle: win32.HMIDIIN,
 
 pub fn init(callback: audio.midi.ReaderCallback) @This() {
     return @This() {
@@ -25,69 +27,71 @@ pub fn init(callback: audio.midi.ReaderCallback) @This() {
     };
 }
 
-pub fn start(device: *@This(), midiDeviceID: u32) !void {
+pub fn start(self: *@This(), midiDeviceID: u32) !void {
 
-    errdefer stop(device) catch {}; // just attempt to stop on failure
+    errdefer stop(self) catch {}; // just attempt to stop on failure
 
-    if (device.state == State.initial) {
-        const result = midiInOpen(
-            &device.midiHandle,
+    if (self.state == State.initial) {
+        const result = win32.midiInOpen(
+            // TODO: this cast shouldn't be necessary, file an issue?
+            @ptrCast(*?win32.HMIDIIN, &self.midiHandle),
             midiDeviceID,
             @ptrToInt(inCallback),
-            @ptrToInt(device),
-            CALLBACK_FUNCTION);
-        if (result != MMSYSERR_NOERROR) {
+            @ptrToInt(self),
+            win32.CALLBACK_FUNCTION);
+        if (result != win32.MMSYSERR_NOERROR) {
             midilog.err("midiInOpen failed, result={}", .{result});
             return error.Unexpected;
         }
-        device.state = State.midiInOpened;
+        self.state = State.midiInOpened;
     }
-    if (device.state == State.midiInOpened) {
-        const result = midiInStart(device.midiHandle);
-        if (result != MMSYSERR_NOERROR) {
+    if (self.state == State.midiInOpened) {
+        const result = win32.midiInStart(self.midiHandle);
+        if (result != win32.MMSYSERR_NOERROR) {
             midilog.err("midiInStart failed, result={}", .{result});
             return error.Unexpected;
         }
-        device.state = State.started;
+        self.state = State.started;
     }
 }
 
-pub fn stop(device: *@This()) !void {
+pub fn stop(self: *@This()) !void {
     midilog.info("WindowsMidiReader", .{});
-    if (device.state == State.started) {
-        const result = midiInStop(device.midiHandle);
-        if (result != MMSYSERR_NOERROR) {
+    if (self.state == State.started) {
+        const result = win32.midiInStop(self.midiHandle);
+        if (result != win32.MMSYSERR_NOERROR) {
             midilog.err("midiInStop failed, result={}", .{result});
             return error.Unexpected;
         }
-        device.state = State.midiInOpened;
+        self.state = State.midiInOpened;
     }
-    if (device.state == State.midiInOpened) {
-        const result = midiInClose(device.midiHandle);
-        if (result != MMSYSERR_NOERROR) {
+    if (self.state == State.midiInOpened) {
+        const result = win32.midiInClose(self.midiHandle);
+        if (result != win32.MMSYSERR_NOERROR) {
             midilog.err("midiInClose failed, result={}", .{result});
             return error.Unexpected;
         }
-        device.state = State.initial;
+        self.state = State.initial;
     }
 }
 
 fn inCallback(
-    handle: HMIDIIN,
+    handle: win32.HMIDIIN,
     msg: u32,
     instance: usize,
     param1: usize,
     param2: usize
 ) callconv(std.os.windows.WINAPI) void {
+    _ = handle;
     var device = @intToPtr(*@This(), instance);
     switch (msg) {
-        MM_MIM_OPEN => {
+        win32.MM_MIM_OPEN => {
             midilog.debug("[MidiListenCallback] open", .{});
         },
-        MM_MIM_CLOSE => {
+        win32.MM_MIM_CLOSE => {
             midilog.debug("[MidiListenCallback] close", .{});
         },
-        MM_MIM_DATA => {
+        win32.MM_MIM_DATA => {
             const midi_msg = audio.midi.MidiMsgUnion { .bytes = [3]u8 {
                 @intCast(u8, (param1 >>  0) & 0xFF),
                 @intCast(u8, (param1 >>  8) & 0xFF),
@@ -95,16 +99,16 @@ fn inCallback(
             }};
             device.callback(param2, midi_msg.msg);
         },
-//        } case MIM_LONGDATA:
+//        } case win32.MIM_LONGDATA:
 //            logDebug("[MidiListenCallback] longdata");
 //            break;
-//        case MIM_ERROR:
+//        case win32.MIM_ERROR:
 //            logDebug("[MidiListenCallback] error");
 //            break;
-//        case MIM_LONGERROR:
+//        case win32.MIM_LONGERROR:
 //            logDebug("[MidiListenCallback] longerror");
 //            break;
-//        case MIM_MOREDATA:
+//        case win32.MIM_MOREDATA:
 //            logDebug("[MidiListenCallback] moredata");
 //            break;
         else => {
