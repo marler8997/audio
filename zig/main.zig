@@ -12,7 +12,15 @@ const audio = @import("./audio.zig");
 //import audio.renderformat;
 //import audio.render;
 //
-pub fn main() !void {
+pub fn main() !u8 {
+    main2() catch |err| switch (err) {
+        error.AlreadyReported => return 0xff,
+        else => |e| return e,
+    };
+    return 0;
+}
+
+fn main2() !void {
 
     //{import audio.midi : unittest1; unittest1(); }
 
@@ -171,8 +179,10 @@ fn go() !void {
         //    try instrument.addInputNode(midiInputDevice.asMidiGeneratorNode());
 //      //          .enforce("failed to add midi device input node");
         //}
-        try midi_reader.start(0); // just hardcode MIDI device 0 for now
+        // just hardcode MIDI device 0 for now
+        try midi_reader.start(0);
     }
+    defer if (UseMidiInstrument) midi_reader.stop();
 
     const renderThread = try std.Thread.spawn(.{}, audio.render.renderThreadEntry, .{{}});
     _ = renderThread;
@@ -192,10 +202,6 @@ fn go() !void {
     try audio.pckeyboard.startInputThread();
     std.log.info("Press ESC to quit", .{});
     audio.pckeyboard.joinInputThread();
-
-    if (UseMidiInstrument) {
-        try midi_reader.stop();
-    }
 }
 //
 //struct SampleRange
