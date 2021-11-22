@@ -8,6 +8,9 @@ const win32 = struct {
     usingnamespace @import("win32").media.audio;
 };
 
+const mmsystem = @import("mmsystem.zig");
+const fmtMmsyserr = mmsystem.fmtMmsyserr;
+
 callback: audio.midi.ReaderCallback,
 handle: win32.HMIDIIN,
 
@@ -30,19 +33,19 @@ pub fn start(self: *@This(), device_id: u32) error{AlreadyReported}!void {
             @ptrToInt(self),
             win32.CALLBACK_FUNCTION);
         if (result != win32.MMSYSERR_NOERROR) {
-            midilog.err("midiInOpen failed, error={}", .{fmtWindowsMmsyserr(result)});
+            midilog.err("midiInOpen failed, error={}", .{fmtMmsyserr(result)});
             return error.AlreadyReported;
         }
     }
     errdefer {
         const result = win32.midiInClose(self.handle);
         if (result != win32.MMSYSERR_NOERROR)
-            std.debug.panic("midiInClose failed, error={}", .{fmtWindowsMmsyserr(result)});
+            std.debug.panic("midiInClose failed, error={}", .{fmtMmsyserr(result)});
     }
     {
         const result = win32.midiInStart(self.handle);
         if (result != win32.MMSYSERR_NOERROR) {
-            midilog.err("midiInStart failed, error={}", .{fmtWindowsMmsyserr(result)});
+            midilog.err("midiInStart failed, error={}", .{fmtMmsyserr(result)});
             return error.AlreadyReported;
         }
     }
@@ -53,12 +56,12 @@ pub fn stop(self: @This()) void {
     {
         const result = win32.midiInStop(self.handle);
         if (result != win32.MMSYSERR_NOERROR)
-            std.debug.panic("midiInStop failed, error={}", .{fmtWindowsMmsyserr(result)});
+            std.debug.panic("midiInStop failed, error={}", .{fmtMmsyserr(result)});
     }
     {
         const result = win32.midiInClose(self.handle);
         if (result != win32.MMSYSERR_NOERROR)
-            std.debug.panic("midiInClose failed, error={}", .{fmtWindowsMmsyserr(result)});
+            std.debug.panic("midiInClose failed, error={}", .{fmtMmsyserr(result)});
     }
 }
 
@@ -103,50 +106,3 @@ fn inCallback(
         },
     }
 }
-
-
-fn mmsyserrorName(error_code: u32) ?[]const u8 {
-    return switch (error_code) {
-        win32.MMSYSERR_NOERROR => "NOERROR",
-        win32.MMSYSERR_ERROR => "ERROR",
-        win32.MMSYSERR_BADDEVICEID => "BADDEVICEID",
-        win32.MMSYSERR_NOTENABLED => "NOTENABLED",
-        win32.MMSYSERR_ALLOCATED => "ALLOCATED",
-        win32.MMSYSERR_INVALHANDLE => "INVALHANDLE",
-        win32.MMSYSERR_NODRIVER => "NODRIVER",
-        win32.MMSYSERR_NOMEM => "NOMEM",
-        win32.MMSYSERR_NOTSUPPORTED => "NOTSUPPORTED",
-        win32.MMSYSERR_BADERRNUM => "BADERRNUM",
-        win32.MMSYSERR_INVALFLAG => "INVALFLAG",
-        win32.MMSYSERR_INVALPARAM => "INVALPARAM",
-        win32.MMSYSERR_HANDLEBUSY => "HANDLEBUSY",
-        win32.MMSYSERR_INVALIDALIAS => "INVALIDALIAS",
-        win32.MMSYSERR_BADDB => "BADDB",
-        win32.MMSYSERR_KEYNOTFOUND => "KEYNOTFOUND",
-        win32.MMSYSERR_READERROR => "READERROR",
-        win32.MMSYSERR_WRITEERROR => "WRITEERROR",
-        win32.MMSYSERR_DELETEERROR => "DELETEERROR",
-        win32.MMSYSERR_VALNOTFOUND => "VALNOTFOUND",
-        win32.MMSYSERR_NODRIVERCB => "NODRIVERCB",
-        win32.MMSYSERR_MOREDATA => "MOREDATA",
-        else => null,
-    };
-}
-
-fn fmtWindowsMmsyserr(error_code: u32)  WindowsMmsyserrFormatter {
-    return .{ .error_code = error_code };
-}
-const WindowsMmsyserrFormatter = struct {
-    error_code: u32,
-    pub fn format(
-        self: WindowsMmsyserrFormatter,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        const name =  mmsyserrorName(self.error_code) orelse @as([]const u8, "?");
-        try writer.print("{d}({s})", .{self.error_code, name});
-    }
-};

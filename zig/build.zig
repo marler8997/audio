@@ -10,22 +10,34 @@ pub fn build(b: *Builder) !void {
     });
 
     const mode = b.standardReleaseOptions();
-    const exe = b.addExecutable("audio", "main.zig");
-    exe.setBuildMode(mode);
-    exe.install();
-    exe.addPackagePath("stdext", "stdext.zig");
-    exe.step.dependOn(&zigwin32_repo.step);
-    exe.addPackagePath("win32", b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"}));
+    {
+        const exe = b.addExecutable("audio", "main.zig");
+        exe.setBuildMode(mode);
+        exe.install();
+        exe.addPackagePath("stdext", "stdext.zig");
+        exe.step.dependOn(&zigwin32_repo.step);
+        exe.addPackagePath("win32", b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"}));
 
-    const windows_midi = b.addExecutable("windows-midi", "tools" ++ std.fs.path.sep_str ++ "windows-midi.zig");
-    windows_midi.setBuildMode(mode);
-    windows_midi.install();
-    windows_midi.step.dependOn(&zigwin32_repo.step);
-    windows_midi.addPackagePath("win32", b.pathJoin(&.{zigwin32_repo.getPath(&windows_midi.step), "win32.zig"}));
+        const runCommand = exe.run();
+        runCommand.step.dependOn(b.getInstallStep());
 
-    const runCommand = exe.run();
-    runCommand.step.dependOn(b.getInstallStep());
+        const runStep = b.step("run", "Run the app");
+        runStep.dependOn(&runCommand.step);
+    }
 
-    const runStep = b.step("run", "Run the app");
-    runStep.dependOn(&runCommand.step);
+    {
+        const windows_midi = b.addExecutable("windows-midi", "tools" ++ std.fs.path.sep_str ++ "windows-midi.zig");
+        windows_midi.setBuildMode(mode);
+        windows_midi.install();
+        windows_midi.step.dependOn(&zigwin32_repo.step);
+        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&windows_midi.step), "win32.zig"});
+        windows_midi.addPackagePath("win32", zigwin32_index_file);
+        windows_midi.addPackage(.{
+            .name = "audio",
+            .path = .{ .path = "audio.zig" },
+            .dependencies = &[_]std.build.Pkg{
+                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+            }
+        });
+    }
 }

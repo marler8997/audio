@@ -9,6 +9,8 @@ pub const pckeyboard = @import("./audio/pckeyboard.zig");
 
 const builtin = @import("builtin");
 
+pub const windows = @import("audio/windows.zig");
+
 const windowsinput = @import("./audio/windowsinput.zig");
 const posixinput = @import("./audio/posixinput.zig");
 pub const osinput = switch (builtin.os.tag) {
