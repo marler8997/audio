@@ -40,4 +40,22 @@ pub fn build(b: *Builder) !void {
             }
         });
     }
+
+    {
+        const driver = b.addSharedLibrary("windowsmididriver", "drivers" ++ std.fs.path.sep_str ++ "windowsmididriver.zig", .unversioned);
+        driver.setBuildMode(mode);
+        driver.install();
+        driver.step.dependOn(&zigwin32_repo.step);
+        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&driver.step), "win32.zig"});
+        driver.addPackagePath("win32", zigwin32_index_file);
+        // Just hardcoded for now
+        driver.addLibPath("C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.22000.0\\km\\x64");
+        //windows_midi.addPackage(.{
+        //    .name = "audio",
+        //    .path = .{ .path = "audio.zig" },
+        //    .dependencies = &[_]std.build.Pkg{
+        //        std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+        //    }
+        //});
+    }
 }
