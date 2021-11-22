@@ -630,11 +630,67 @@ pub const MidiMsgUnion = packed union {
     bytes: [@sizeOf(MidiMsg)]u8,
     msg: MidiMsg,
 };
+comptime {
+    std.debug.assert(@sizeOf(MidiMsg) == 3);
+    std.debug.assert(@sizeOf(MidiMsgUnion) == 3);
+}
+
+
+pub const ProcessResult = struct {
+    msg: MidiMsg,
+    len: u3,
+};
+pub const ProcessError = error {
+    MidiMsgStatusMsbIsZero,
+    NeedMoreData,
+};
+pub const MidiStreamProcessor = struct {
+    last_status: ?u8 = null,
+
+    pub fn process(self: *MidiStreamProcessor, data: []const u8) ProcessError!ProcessResult {
+        std.debug.assert(data.len > 0);
+        const info : struct {status: u8, status_len: u1 } = blk: {
+            if ((data[0] & 0x80) == 0) {
+                if (self.last_status) |last_status| break :blk .{ .status = last_status, .status_len = 0 };
+                return ProcessError.MidiMsgStatusMsbIsZero;
+            }
+            self.last_status = data[0];
+            break :blk .{ .status = data[0], .status_len = 1 };
+        };
+        const data_len: u2 = getMidiDataLen(@intToEnum(MidiMsgKind, (info.status >> 4) & 0x7));
+        const full_len = @intCast(u3, info.status_len) + data_len;
+        if (data.len < full_len)
+            return error.NeedMoreData;
+        return ProcessResult{
+            .len = info.status_len + data_len,
+            .msg = (MidiMsgUnion { .bytes = switch (data_len) {
+                0 => [3]u8 { info.status, undefined, undefined },
+                1 => [3]u8 { info.status, data[@intCast(usize, info.status_len)], undefined },
+                2 => [3]u8 { info.status, data[@intCast(usize, info.status_len)], data[@intCast(usize, info.status_len) + 1] },
+                else => unreachable,
+            } }).msg,
+        };
+    }
+};
+
+pub fn getMidiDataLen(kind: MidiMsgKind) u2 {
+    return switch (kind) {
+        .note_off         => 2,
+        .note_on          => 2,
+        .poly_pressure    => 2,
+        .control_change   => 2,
+        .program_change   => 1,
+        .channel_pressure => 1,
+        .pitch_bend       => 2,
+        .system_msg       => @panic("system_msg data_len not implemented"),
+    };
+}
 
 pub fn checkMidiMsg(msg: MidiMsg) !void {
     if (msg.msb_status == 0) return error.MidiMsgStatusMsbIsZero;
-    if (msg.data.bytes[0] == 1) return error.MidiMsgFirstDataByteMsbIsOne;
-    if (msg.data.bytes[1] == 1) return error.MidiMsgSecondDataByteMsbIsOne;
+    const data_len = getMidiDataLen(msg.kind);
+    if (data_len >= 1 and (msg.data.bytes[0] & 0x80) != 0) return error.MidiMsgFirstDataByteMsbIsOne;
+    if (data_len >= 2 and (msg.data.bytes[1] & 0x80) != 0) return error.MidiMsgSecondDataByteMsbIsOne;
 }
 
 pub fn logMidiMsg(msg: MidiMsg) void {

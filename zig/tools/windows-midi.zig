@@ -16,7 +16,7 @@ pub fn main() !void {
             var caps: win32.MIDIINCAPS = undefined;
             const result = win32.midiInGetDevCaps(i, &caps, @sizeOf(@TypeOf(caps)));
             if (result == win32.MMSYSERR_NOERROR) {
-                std.log.info("    {}: {}", .{i, caps});
+                std.log.info("    {}: {}", .{i, fmtMidiInCaps(&caps)});
             } else {
                 std.log.err("     {}: midiInGetDevCaps failed, error={}", .{i, mmsystem.fmtMmsyserr(result)});
             }
@@ -38,6 +38,37 @@ pub fn main() !void {
         }
     }
 }
+
+pub fn fmtMidiInCaps(caps: *win32.MIDIINCAPS) MidiInCapsFormatter {
+    return .{ .caps = caps };
+}
+const MidiInCapsFormatter = struct {
+    caps: *win32.MIDIINCAPS,
+    pub fn format(
+        self: MidiInCapsFormatter,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("ManufacturerId: {}, ProductId: {}, DriverVersion: {}, ", .{
+            self.caps.wMid,
+            self.caps.wPid,
+            self.caps.vDriverVersion,
+        });
+        {
+            // TODO: add support for non-unicode
+            std.debug.assert(@TypeOf(self.caps.szPname) == [32]u16);
+            const name_ptr: [*:0]u16 = @alignCast(2, @ptrCast([*:0]align(1) u16, &self.caps.szPname));
+            const name_slice = std.mem.span(name_ptr);
+            try writer.print("ProductName: \"{s}\", ", .{std.unicode.fmtUtf16le(name_slice)});
+        }
+        try writer.print("Support: {}", .{
+            self.caps.dwSupport,
+        });
+    }
+};
 
 pub fn fmtMidiOutCaps(caps: *win32.MIDIOUTCAPS) MidiOutCapsFormatter {
     return .{ .caps = caps };
