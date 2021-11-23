@@ -26,13 +26,13 @@ pub fn build(b: *Builder) !void {
     }
 
     {
-        const windows_midi = b.addExecutable("windows-midi", "tools" ++ std.fs.path.sep_str ++ "windows-midi.zig");
-        windows_midi.setBuildMode(mode);
-        windows_midi.install();
-        windows_midi.step.dependOn(&zigwin32_repo.step);
-        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&windows_midi.step), "win32.zig"});
-        windows_midi.addPackagePath("win32", zigwin32_index_file);
-        windows_midi.addPackage(.{
+        const exe = b.addExecutable("midistatus", "tools" ++ std.fs.path.sep_str ++ "midistatus.zig");
+        exe.setBuildMode(mode);
+        exe.install();
+        exe.step.dependOn(&zigwin32_repo.step);
+        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+        exe.addPackagePath("win32", zigwin32_index_file);
+        exe.addPackage(.{
             .name = "audio",
             .path = .{ .path = "audio.zig" },
             .dependencies = &[_]std.build.Pkg{
