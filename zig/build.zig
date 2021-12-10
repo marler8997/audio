@@ -60,6 +60,8 @@ pub fn build(b: *Builder) !void {
         });
     }
 
+    const have_virtual_midi_sdk = virtual_midi_sdk.haveVirtualMidiSdk();
+
     {
         const midilogger = b.addExecutable("midilogger", "tools" ++ std.fs.path.sep_str ++ "midilogger.zig");
         midilogger.setBuildMode(mode);
@@ -77,7 +79,11 @@ pub fn build(b: *Builder) !void {
             }
         });
 
-        b.step("midilogger", "Build/Install the midilogger tool").dependOn(&b.addInstallArtifact(midilogger).step);
+        const install_step = b.addInstallArtifact(midilogger);
+        b.step("midilogger", "Build/Install the midilogger tool").dependOn(&install_step.step);
+        if (have_virtual_midi_sdk) {
+            b.default_step.dependOn(&install_step.step);
+        }
     }
 }
 
@@ -91,6 +97,10 @@ const virtual_midi_sdk = struct {
 
         lib_exe_obj.step.dependOn(check_step);
         lib_exe_obj.addLibPath(c_binding_path);
+    }
+    pub fn haveVirtualMidiSdk() bool {
+        std.fs.accessAbsoluteZ(c_binding_path, .{}) catch return false;
+        return true;
     }
     fn checkVirtualMidiSdk(step: *std.build.Step) !void {
         _ = step;
