@@ -9,9 +9,11 @@ pub fn build(b: *Builder) !void {
         .sha = "7685bb92610ba4f34e0077eb2b6263fa6f1f36c5",
     });
 
+    const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
     {
         const exe = b.addExecutable("audio", "main.zig");
+        exe.setTarget(target);
         exe.setBuildMode(mode);
         exe.install();
         exe.addPackagePath("stdext", "stdext.zig");
@@ -27,6 +29,7 @@ pub fn build(b: *Builder) !void {
 
     {
         const exe = b.addExecutable("midistatus", "tools" ++ std.fs.path.sep_str ++ "midistatus.zig");
+        exe.setTarget(target);
         exe.setBuildMode(mode);
         exe.install();
         exe.step.dependOn(&zigwin32_repo.step);
@@ -43,6 +46,7 @@ pub fn build(b: *Builder) !void {
 
     {
         const exe = b.addExecutable("midipatch", "tools" ++ std.fs.path.sep_str ++ "midipatch.zig");
+        exe.setTarget(target);
         exe.setBuildMode(mode);
         exe.install();
         exe.step.dependOn(&zigwin32_repo.step);
@@ -63,15 +67,16 @@ pub fn build(b: *Builder) !void {
     const have_virtual_midi_sdk = virtual_midi_sdk.haveVirtualMidiSdk();
 
     {
-        const midilogger = b.addExecutable("midilogger", "tools" ++ std.fs.path.sep_str ++ "midilogger.zig");
-        midilogger.setBuildMode(mode);
-        midilogger.step.dependOn(&zigwin32_repo.step);
-        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&midilogger.step), "win32.zig"});
-        midilogger.addPackagePath("win32", zigwin32_index_file);
+        const exe = b.addExecutable("midilogger", "tools" ++ std.fs.path.sep_str ++ "midilogger.zig");
+        exe.setTarget(target);
+        exe.setBuildMode(mode);
+        exe.step.dependOn(&zigwin32_repo.step);
+        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+        exe.addPackagePath("win32", zigwin32_index_file);
 
-        virtual_midi_sdk.addSdkPath(midilogger);
+        virtual_midi_sdk.addSdkPath(exe);
 
-        midilogger.addPackage(.{
+        exe.addPackage(.{
             .name = "audio",
             .path = .{ .path = "audio.zig" },
             .dependencies = &[_]std.build.Pkg{
@@ -79,7 +84,7 @@ pub fn build(b: *Builder) !void {
             }
         });
 
-        const install_step = b.addInstallArtifact(midilogger);
+        const install_step = b.addInstallArtifact(exe);
         b.step("midilogger", "Build/Install the midilogger tool").dependOn(&install_step.step);
         if (have_virtual_midi_sdk) {
             b.default_step.dependOn(&install_step.step);
