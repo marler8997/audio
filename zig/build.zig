@@ -90,6 +90,31 @@ pub fn build(b: *Builder) !void {
             b.default_step.dependOn(&install_step.step);
         }
     }
+
+    {
+        const exe = b.addExecutable("midimaestro", "tools" ++ std.fs.path.sep_str ++ "midimaestro.zig");
+        exe.setTarget(target);
+        exe.setBuildMode(mode);
+        exe.step.dependOn(&zigwin32_repo.step);
+        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+        exe.addPackagePath("win32", zigwin32_index_file);
+
+        virtual_midi_sdk.addSdkPath(exe);
+
+        exe.addPackage(.{
+            .name = "audio",
+            .path = .{ .path = "audio.zig" },
+            .dependencies = &[_]std.build.Pkg{
+                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+            }
+        });
+
+        const install_step = b.addInstallArtifact(exe);
+        b.step("midimaestro", "Build/Install the midimaestro tool").dependOn(&install_step.step);
+        if (have_virtual_midi_sdk) {
+            b.default_step.dependOn(&install_step.step);
+        }
+    }
 }
 
 const virtual_midi_sdk = struct {
