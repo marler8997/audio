@@ -45,6 +45,24 @@ pub fn build(b: *Builder) !void {
     }
 
     {
+        const exe = b.addExecutable("midirecorder", "tools" ++ std.fs.path.sep_str ++ "midirecorder.zig");
+        exe.setTarget(target);
+        exe.setBuildMode(mode);
+        exe.install();
+        exe.step.dependOn(&zigwin32_repo.step);
+        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+        exe.addPackagePath("win32", zigwin32_index_file);
+
+        exe.addPackage(.{
+            .name = "audio",
+            .path = .{ .path = "audio.zig" },
+            .dependencies = &[_]std.build.Pkg{
+                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+            }
+        });
+    }
+
+    {
         const exe = b.addExecutable("midipatch", "tools" ++ std.fs.path.sep_str ++ "midipatch.zig");
         exe.setTarget(target);
         exe.setBuildMode(mode);
