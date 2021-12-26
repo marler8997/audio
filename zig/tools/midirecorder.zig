@@ -53,6 +53,40 @@ pub fn main() !u8 {
     return 0;
 }
 
+fn StringArray(comptime max_len: comptime_int) type {
+    return struct {
+        store: [max_len]u8,
+        len: std.math.IntFittingRange(0, max_len),
+        pub fn format(
+            self: @This(),
+            comptime fmt: []const u8,
+            options: std.fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
+            _ = fmt;
+            _ = options;
+            try writer.print("{s}", .{self.store[0 .. self.len]});
+        }
+    };
+}
+
+fn toMaestroString(note: audio.midi.MidiNote) StringArray(4) {
+    var result: StringArray(4) = undefined;
+    result.store[0] = @tagName(note)[0];
+    result.len = 1;
+    var tag_name_offset: u8 = 1;
+    if (@tagName(note)[1] == 's') {
+        std.debug.assert(std.mem.eql(u8, @tagName(note)[2..6], "harp"));
+        result.store[1] = '#';
+        result.len += 1;
+        tag_name_offset += 5;
+    }
+    const remaining = @tagName(note).len - tag_name_offset;
+    std.mem.copy(u8, result.store[result.len..result.len + remaining], @tagName(note)[tag_name_offset..]);
+    result.len += @intCast(@TypeOf(result.len), remaining);
+    return result;
+}
+
 fn onMidiEvent(timestamp: usize, msg: audio.midi.MidiMsg) void {
     _ = timestamp;
     onMidiEvent2(msg) catch |err| {
@@ -74,7 +108,7 @@ fn onMidiEvent2(msg: audio.midi.MidiMsg) !void {
             } else {
                 try global_state.out_file.writer().writeAll(" ");
             }
-            try global_state.out_file.writer().print("{s}", .{@tagName(@intToEnum(audio.midi.MidiNote, msg.data.note_on.note))});
+            try global_state.out_file.writer().print("{s}", .{toMaestroString(@intToEnum(audio.midi.MidiNote, msg.data.note_on.note))});
         },
         .note_off => {
             if (!global_state.at_line_start) {

@@ -1,0 +1,186 @@
+c#2
+g#2
+g#2 c#3
+e3
+c#2 g#3
+c#3
+g#2 e3
+g#3
+c#2 c#4
+e3
+g#2 g#3
+c#4
+c#2 e4
+g#3
+g#2 c#4
+e4
+c#2 g#4
+c#4
+g#2 e4
+g#4
+c#2 c#5
+e4
+g#2 g#4
+c#5
+c#2 e5
+g#4
+g#2 c#5
+e5
+c#2 c#3 g#4 c#5 e5 g#5
+g#2 g#4 c#5 e5 g#5
+
+c2
+g#2
+g#2 c3
+d#3
+g#3 c2
+c3
+d#3 g#2
+g#3
+c2 c4
+d#3
+g#3 g#2
+c4
+c2 d#4
+g#3
+g#2 c4
+d#4
+c2 g#4
+c4
+g#2 d#4
+g#4
+c5 c2
+d#4
+g#2 g#4
+c5
+c2 d#5
+g#4
+g#2 c5
+d#5
+c2 c3 g#4 c5 d#5 g#5
+g#2 g#4 c5 d#5 g#5
+
+b1
+c#3
+g#2 f3
+g#3
+b1 c#4
+f3
+g#2 g#3
+c#4
+b1 f4
+g#3
+g#2 c#4
+f4
+b1 g#4
+c#4
+g#2 f4
+g#4
+c#5 b1
+f4
+g#2 g#4
+c#5
+f5 b1
+g#4
+g#2 c#5
+f5
+b1 g#5
+c#5
+g#2 f5
+g#5
+c#6 b1 c#5 b2 g#5 f5
+g#2 c#6 g#5 c#5 f5
+
+a1
+c#3
+a2 f#3
+a3
+a1 c#4
+c#4
+f#4 a2
+a4
+a1 c#5
+c#5
+a2 f#5
+a5
+a1 c#6 f#5 c#5
+c#6 f#5 a2 c#5
+
+a1
+c#3
+a2 e3
+g3
+a1 c#4
+c#4
+a2 e4
+g4
+a1 c#5
+c#5
+e5 a2
+g5
+a1 c#5 g5 c#6
+c#5 g5 c#6 a2
+
+g#1 g#2 c5 g#5 c6
+g#4 c4 g#3
+g#5
+g#4 c4
+g#5
+a#4 c#4
+g#5
+c5 d#4
+g#5
+c#5 e4
+g#5
+f#4 d#5
+g#5
+c#5 e4
+g#5
+f#4 d#5
+g#5
+c#5 e4
+g#5
+a4 f#5
+g#5
+g#4 e5
+g#5
+f#4 d#5
+g#5
+c#5 e4
+g#5
+d#4 c5
+g#5
+c#4 a4
+g5
+g#4 c4
+g#5
+g#4 c4
+g#5
+g#4 c4
+g#5
+c#4 a#4
+g#5
+c5 d#4
+g#5
+c#5 e4
+g#5
+f#4 d#5
+g#5
+c#5 e4
+g#5
+f#4 d#5
+g#5
+c#5 e4
+g#5
+a4 f#5
+g#5
+g#4 e5
+g#5
+f#4 d#5
+g#5
+e4 c#5
+g#5
+d#4 c5
+g#5
+c#4 a4
+g5
