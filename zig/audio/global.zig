@@ -13,4 +13,4 @@ pub var backendFuncs : *const backend.BackendFuncs = undefined;
 // Other Globals
 //
 var arenaDirectAllocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-pub const allocator = &arenaDirectAllocator.allocator;
+pub const allocator = arenaDirectAllocator.allocator();

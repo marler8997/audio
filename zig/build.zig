@@ -6,7 +6,7 @@ pub fn build(b: *Builder) !void {
     const zigwin32_repo = GitRepoStep.create(b, .{
         .url = "https://github.com/marlersoft/zigwin32",
         .branch = "15.0.1-preview",
-        .sha = "7685bb92610ba4f34e0077eb2b6263fa6f1f36c5",
+        .sha = "032a1b51b83b8fe64e0a97d7fe5da802065244c6",
     });
 
     const target = b.standardTargetOptions(.{});

@@ -23,7 +23,7 @@ fn dumpVersion(prefix: []const u8, func: anytype) void {
 }
 
 var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-const allocator = &arena_instance.allocator;
+const allocator = arena_instance.allocator();
 
 pub fn main() !u8 {
     const all_cmd_args = try std.process.argsAlloc(allocator);

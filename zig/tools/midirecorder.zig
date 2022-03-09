@@ -9,7 +9,7 @@ const win32 = struct {
 const audio = @import("audio");
 
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-const allocator = &arena.allocator;
+const allocator = arena.allocator();
 
 var global_state: struct {
     out_file: std.fs.File,

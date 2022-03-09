@@ -8,7 +8,7 @@ const audio = @import("audio");
 const mmsystem = audio.windows.mmsystem;
 
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-const allocator = &arena.allocator;
+const allocator = arena.allocator();
 
 pub fn main() !u8 {
     const all_cmd_args = try std.process.argsAlloc(allocator);
