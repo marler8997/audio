@@ -1,3 +1,4 @@
+// tested with zig version 0.9.1
 const std = @import("std");
 const Builder = std.build.Builder;
 const GitRepoStep = @import("GitRepoStep.zig");
