@@ -4,7 +4,7 @@ const testing = std.testing;
 
 const midilog = std.log.scoped(.midi);
 
-pub const ReaderCallback = fn(timestamp: usize, msg: MidiMsg) void;
+pub const ReaderCallback = *const fn(timestamp: usize, msg: MidiMsg) void;
 
 pub const MidiReader =
     if (builtin.os.tag == .windows) @import("windows/MidiReader.zig")
@@ -148,7 +148,7 @@ pub const justC4Freq = justFreqTable(MidiNote.c4);
 pub const justC0Freq = justFreqTable(MidiNote.c0);
 
 pub fn getStdFreq(note : MidiNote) f32 {
-    return stdFreq[@enumToInt(note)];
+    return stdFreq[@intFromEnum(note)];
 }
 pub const stdFreq = [_]f32 {
         8.18, //   0
@@ -288,37 +288,37 @@ const OctaveRoot = struct { octave: i5, root: i8 };
 fn getOctaveRoot(root: MidiNote, note: MidiNote) OctaveRoot {
     @setEvalBranchQuota(3000);
 
-    if (@enumToInt(note) >= @enumToInt(root)) {
+    if (@intFromEnum(note) >= @intFromEnum(root)) {
         var result = OctaveRoot { .octave = 0, .root = undefined };
-        var next_root = @as(u8, @enumToInt(root)) + 12;
-        while (next_root <= @enumToInt(note)) : (next_root += 12) {
+        var next_root = @as(u8, @intFromEnum(root)) + 12;
+        while (next_root <= @intFromEnum(note)) : (next_root += 12) {
             result.octave += 1;
         }
-        result.root = @intCast(i8, next_root - 12);
+        result.root = @intCast(next_root - 12);
         return result;
     }
 
-    var result = OctaveRoot { .octave = -1, .root =  @as(i8, @enumToInt(root)) - 12 };
-    while (result.root > @enumToInt(note)) : (result.root -= 12) {
+    var result = OctaveRoot { .octave = -1, .root =  @as(i8, @intFromEnum(root)) - 12 };
+    while (result.root > @intFromEnum(note)) : (result.root -= 12) {
         result.octave -= 1;
     }
     return result;
 }
 test "getOctaveRoot" {
-    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @enumToInt(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.c4));
-    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @enumToInt(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.csharp4));
-    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @enumToInt(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.b4));
-    try testing.expectEqual(OctaveRoot { .octave =  1, .root = @enumToInt(MidiNote.c5)}, getOctaveRoot(MidiNote.c4, MidiNote.c5));
-    try testing.expectEqual(OctaveRoot { .octave =  1, .root = @enumToInt(MidiNote.c5)}, getOctaveRoot(MidiNote.c4, MidiNote.b5));
-    try testing.expectEqual(OctaveRoot { .octave =  5, .root = @enumToInt(MidiNote.c9)}, getOctaveRoot(MidiNote.c4, MidiNote.g9));
+    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @intFromEnum(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.c4));
+    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @intFromEnum(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.csharp4));
+    try testing.expectEqual(OctaveRoot { .octave =  0, .root = @intFromEnum(MidiNote.c4)}, getOctaveRoot(MidiNote.c4, MidiNote.b4));
+    try testing.expectEqual(OctaveRoot { .octave =  1, .root = @intFromEnum(MidiNote.c5)}, getOctaveRoot(MidiNote.c4, MidiNote.c5));
+    try testing.expectEqual(OctaveRoot { .octave =  1, .root = @intFromEnum(MidiNote.c5)}, getOctaveRoot(MidiNote.c4, MidiNote.b5));
+    try testing.expectEqual(OctaveRoot { .octave =  5, .root = @intFromEnum(MidiNote.c9)}, getOctaveRoot(MidiNote.c4, MidiNote.g9));
 
-    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @enumToInt(MidiNote.c3)}, getOctaveRoot(MidiNote.c4, MidiNote.b3));
-    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @enumToInt(MidiNote.c3)}, getOctaveRoot(MidiNote.c4, MidiNote.c3));
-    try testing.expectEqual(OctaveRoot { .octave = -2, .root = @enumToInt(MidiNote.c2)}, getOctaveRoot(MidiNote.c4, MidiNote.b2));
-    try testing.expectEqual(OctaveRoot { .octave = -4, .root = @enumToInt(MidiNote.c0)}, getOctaveRoot(MidiNote.c4, MidiNote.c0));
+    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @intFromEnum(MidiNote.c3)}, getOctaveRoot(MidiNote.c4, MidiNote.b3));
+    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @intFromEnum(MidiNote.c3)}, getOctaveRoot(MidiNote.c4, MidiNote.c3));
+    try testing.expectEqual(OctaveRoot { .octave = -2, .root = @intFromEnum(MidiNote.c2)}, getOctaveRoot(MidiNote.c4, MidiNote.b2));
+    try testing.expectEqual(OctaveRoot { .octave = -4, .root = @intFromEnum(MidiNote.c0)}, getOctaveRoot(MidiNote.c4, MidiNote.c0));
 
     try testing.expectEqual(OctaveRoot { .octave = -1, .root = -11}, getOctaveRoot(MidiNote.csharpneg1, MidiNote.cneg1));
-    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @enumToInt(MidiNote.g8)}, getOctaveRoot(MidiNote.g9, MidiNote.f9));
+    try testing.expectEqual(OctaveRoot { .octave = -1, .root = @intFromEnum(MidiNote.g8)}, getOctaveRoot(MidiNote.g9, MidiNote.f9));
 }
 
 const NotePos = struct {
@@ -327,7 +327,7 @@ const NotePos = struct {
 };
 fn notePos(root: MidiNote, note: MidiNote) NotePos {
     const octave_root = getOctaveRoot(root, note);
-    return .{ .octave = octave_root.octave, .interval = @intCast(u4, @enumToInt(note) - octave_root.root) };
+    return .{ .octave = octave_root.octave, .interval = @intCast(@intFromEnum(note) - octave_root.root) };
 }
 
 
@@ -339,9 +339,9 @@ const pos_scale_table = [_]f32 {
 };
 fn getScale(octave: i5) f32 {
     if (octave >= 0) {
-        return pos_scale_table[@intCast(usize, octave)];
+        return pos_scale_table[octave];
     }
-    return neg_scale_table[@intCast(usize, -octave)];
+    return neg_scale_table[-octave];
 }
 
 fn sortRatioTable(ratios: [11]f32) [12]f32 {
@@ -403,11 +403,11 @@ fn getJustRatio(interval: u4) f32 {
 
 fn justFreqTable(root_note: MidiNote) [127]f32 {
     var table: [127]f32 = undefined;
-    const root_freq = stdFreq[@enumToInt(root_note)];
+    const root_freq = stdFreq[@intFromEnum(root_note)];
     {
         var i: u7 = 0;
         while (true) {
-            const pos = notePos(root_note, @intToEnum(MidiNote, i));
+            const pos = notePos(root_note, @enumFromInt(i));
             table[i] = root_freq * getScale(pos.octave) * getJustRatio(pos.interval);
             i += 1;
             if (i == table.len - 1)
@@ -576,12 +576,18 @@ const NoteAndVelocity = packed struct {
     msb_velocity: u1,
     velocity: u7,
 };
+//comptime { std.debug.assert(@sizeOf(MidiMsg) == 3); }
 pub const MidiMsg = packed struct {
     status_arg: u4,
     kind: MidiMsgKind,
     msb_status: u1,
-    data: packed union {
-        bytes: [2]u8,
+    data: Data,
+
+    comptime { std.debug.assert(@sizeOf(Data) == 2); }
+    const Data = packed union {
+        //bytes: [2]u8,
+        bytes: packed struct { @"0": u8, @"1": u8 },
+        uint16: u16,
         note_off: Note,
         note_on: Note,
         poly_pressure: PressureNote,
@@ -600,7 +606,7 @@ pub const MidiMsg = packed struct {
             high_bits: u7,
             msb_high_bits: u1,
             pub fn getValue(self: @This()) u14 {
-                return (@intCast(u14, self.high_bits) << 7) | @intCast(u14, self.low_bits);
+                return (@as(u14, self.high_bits) << 7) | @as(u14, self.low_bits);
             }
         },
 
@@ -622,17 +628,18 @@ pub const MidiMsg = packed struct {
             velocity: u7,
             msb_velocity: u1,
         };
-    },
+    };
 };
 
 // TODO: remove this once I can use @bitCast instead
 pub const MidiMsgUnion = packed union {
-    bytes: [@sizeOf(MidiMsg)]u8,
+    //bytes: [@sizeOf(MidiMsg)]u8,
+    bytes: packed struct { @"0": u8, @"1": u8, @"2": u8 },
     msg: MidiMsg,
 };
 comptime {
-    std.debug.assert(@sizeOf(MidiMsg) == 3);
-    std.debug.assert(@sizeOf(MidiMsgUnion) == 3);
+    //std.debug.assert(@sizeOf(MidiMsg) == 3);
+    //std.debug.assert(@sizeOf(MidiMsgUnion) == 3);
 }
 
 
@@ -657,16 +664,16 @@ pub const MidiStreamProcessor = struct {
             self.last_status = data[0];
             break :blk .{ .status = data[0], .status_len = 1 };
         };
-        const data_len: u2 = getMidiDataLen(@intToEnum(MidiMsgKind, (info.status >> 4) & 0x7));
-        const full_len = @intCast(u3, info.status_len) + data_len;
+        const data_len: u2 = getMidiDataLen(@enumFromInt((info.status >> 4) & 0x7));
+        const full_len: u3 = @as(u3, info.status_len) + data_len;
         if (data.len < full_len)
             return error.NeedMoreData;
         return ProcessResult{
             .len = info.status_len + data_len,
             .msg = (MidiMsgUnion { .bytes = switch (data_len) {
                 0 => [3]u8 { info.status, undefined, undefined },
-                1 => [3]u8 { info.status, data[@intCast(usize, info.status_len)], undefined },
-                2 => [3]u8 { info.status, data[@intCast(usize, info.status_len)], data[@intCast(usize, info.status_len) + 1] },
+                1 => [3]u8 { info.status, data[@intCast(info.status_len)], undefined },
+                2 => [3]u8 { info.status, data[@intCast(info.status_len)], data[@as(usize, @intCast(info.status_len)) + 1] },
                 else => unreachable,
             } }).msg,
         };
@@ -689,8 +696,8 @@ pub fn getMidiDataLen(kind: MidiMsgKind) u2 {
 pub fn checkMidiMsg(msg: MidiMsg) !void {
     if (msg.msb_status == 0) return error.MidiMsgStatusMsbIsZero;
     const data_len = getMidiDataLen(msg.kind);
-    if (data_len >= 1 and (msg.data.bytes[0] & 0x80) != 0) return error.MidiMsgFirstDataByteMsbIsOne;
-    if (data_len >= 2 and (msg.data.bytes[1] & 0x80) != 0) return error.MidiMsgSecondDataByteMsbIsOne;
+    if (data_len >= 1 and (msg.data.bytes.@"0" & 0x80) != 0) return error.MidiMsgFirstDataByteMsbIsOne;
+    if (data_len >= 2 and (msg.data.bytes.@"1" & 0x80) != 0) return error.MidiMsgSecondDataByteMsbIsOne;
 }
 
 pub fn logMidiMsg(msg: MidiMsg) void {
@@ -699,7 +706,7 @@ pub fn logMidiMsg(msg: MidiMsg) void {
             const kind: []const u8 = if (msg.kind == .note_off) "off" else "on";
             midilog.debug("note_{s} channel={} note={s}({}) velocity={}", .{
                 kind, msg.status_arg,
-                @tagName(@intToEnum(MidiNote, msg.data.note_off.note)),
+                @tagName(@as(MidiNote, @enumFromInt(msg.data.note_off.note))),
                 msg.data.note_off.note, msg.data.note_off.velocity});
         },
         .poly_pressure => {

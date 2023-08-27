@@ -1,139 +1,150 @@
-// tested with zig version 0.9.1
+// tested with zig version 0.11.0
 const std = @import("std");
 const Builder = std.build.Builder;
 const GitRepoStep = @import("GitRepoStep.zig");
 
 pub fn build(b: *Builder) !void {
-    const zigwin32_repo = GitRepoStep.create(b, .{
-        .url = "https://github.com/marlersoft/zigwin32",
-        .branch = "15.0.1-preview",
-        .sha = "032a1b51b83b8fe64e0a97d7fe5da802065244c6",
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const stdext = b.createModule(.{
+        .source_file = .{ .path = "stdext.zig" },
     });
 
-    const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+    const zigwin32_repo = GitRepoStep.create(b, .{
+        .url = "https://github.com/marlersoft/zigwin32",
+        .branch = "21.0.3-preview",
+        .sha = "e61d5e9cc18bc254d3e495e53ec02f9690793575",
+    });
+    const zigwin32 = b.createModule(.{
+        .source_file = .{ .path = b.pathJoin(&.{zigwin32_repo.path, "win32.zig"}), },
+    });
+    
     {
-        const exe = b.addExecutable("audio", "main.zig");
-        exe.setTarget(target);
-        exe.setBuildMode(mode);
-        exe.install();
-        exe.addPackagePath("stdext", "stdext.zig");
+        const exe = b.addExecutable(.{
+            .name = "audio",
+            .root_source_file = .{ .path = "main.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        b.installArtifact(exe);
+        exe.addModule("stdext", stdext);
         exe.step.dependOn(&zigwin32_repo.step);
-        exe.addPackagePath("win32", b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"}));
+        exe.addModule("win32", zigwin32);
 
-        const runCommand = exe.run();
-        runCommand.step.dependOn(b.getInstallStep());
+        const run = b.addRunArtifact(exe);
+        run.step.dependOn(b.getInstallStep());
 
         const runStep = b.step("run", "Run the app");
-        runStep.dependOn(&runCommand.step);
+        runStep.dependOn(&run.step);
     }
 
-    {
-        const exe = b.addExecutable("midistatus", "tools" ++ std.fs.path.sep_str ++ "midistatus.zig");
-        exe.setTarget(target);
-        exe.setBuildMode(mode);
-        exe.install();
-        exe.step.dependOn(&zigwin32_repo.step);
-        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
-        exe.addPackagePath("win32", zigwin32_index_file);
-        exe.addPackage(.{
-            .name = "audio",
-            .path = .{ .path = "audio.zig" },
-            .dependencies = &[_]std.build.Pkg{
-                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
-            }
-        });
-    }
-
-    {
-        const exe = b.addExecutable("midirecorder", "tools" ++ std.fs.path.sep_str ++ "midirecorder.zig");
-        exe.setTarget(target);
-        exe.setBuildMode(mode);
-        exe.install();
-        exe.step.dependOn(&zigwin32_repo.step);
-        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
-        exe.addPackagePath("win32", zigwin32_index_file);
-
-        exe.addPackage(.{
-            .name = "audio",
-            .path = .{ .path = "audio.zig" },
-            .dependencies = &[_]std.build.Pkg{
-                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
-            }
-        });
-    }
-
-    {
-        const exe = b.addExecutable("midipatch", "tools" ++ std.fs.path.sep_str ++ "midipatch.zig");
-        exe.setTarget(target);
-        exe.setBuildMode(mode);
-        exe.install();
-        exe.step.dependOn(&zigwin32_repo.step);
-        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
-        exe.addPackagePath("win32", zigwin32_index_file);
-
-        virtual_midi_sdk.addSdkPath(exe);
-
-        exe.addPackage(.{
-            .name = "audio",
-            .path = .{ .path = "audio.zig" },
-            .dependencies = &[_]std.build.Pkg{
-                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
-            }
-        });
-    }
-
-    const have_virtual_midi_sdk = virtual_midi_sdk.haveVirtualMidiSdk();
-
-    {
-        const exe = b.addExecutable("midilogger", "tools" ++ std.fs.path.sep_str ++ "midilogger.zig");
-        exe.setTarget(target);
-        exe.setBuildMode(mode);
-        exe.step.dependOn(&zigwin32_repo.step);
-        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
-        exe.addPackagePath("win32", zigwin32_index_file);
-
-        virtual_midi_sdk.addSdkPath(exe);
-
-        exe.addPackage(.{
-            .name = "audio",
-            .path = .{ .path = "audio.zig" },
-            .dependencies = &[_]std.build.Pkg{
-                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
-            }
-        });
-
-        const install_step = b.addInstallArtifact(exe);
-        b.step("midilogger", "Build/Install the midilogger tool").dependOn(&install_step.step);
-        if (have_virtual_midi_sdk) {
-            b.default_step.dependOn(&install_step.step);
-        }
-    }
-
-    {
-        const exe = b.addExecutable("midimaestro", "tools" ++ std.fs.path.sep_str ++ "midimaestro.zig");
-        exe.setTarget(target);
-        exe.setBuildMode(mode);
-        exe.step.dependOn(&zigwin32_repo.step);
-        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
-        exe.addPackagePath("win32", zigwin32_index_file);
-
-        virtual_midi_sdk.addSdkPath(exe);
-
-        exe.addPackage(.{
-            .name = "audio",
-            .path = .{ .path = "audio.zig" },
-            .dependencies = &[_]std.build.Pkg{
-                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
-            }
-        });
-
-        const install_step = b.addInstallArtifact(exe);
-        b.step("midimaestro", "Build/Install the midimaestro tool").dependOn(&install_step.step);
-        if (have_virtual_midi_sdk) {
-            b.default_step.dependOn(&install_step.step);
-        }
-    }
+//    {
+//        const exe = b.addExecutable("midistatus", "tools" ++ std.fs.path.sep_str ++ "midistatus.zig");
+//        exe.setTarget(target);
+//        exe.setBuildMode(optimize);
+//        exe.install();
+//        exe.step.dependOn(&zigwin32_repo.step);
+//        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+//        exe.addPackagePath("win32", zigwin32_index_file);
+//        exe.addPackage(.{
+//            .name = "audio",
+//            .path = .{ .path = "audio.zig" },
+//            .dependencies = &[_]std.build.Pkg{
+//                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+//            }
+//        });
+//    }
+//
+//    {
+//        const exe = b.addExecutable("midirecorder", "tools" ++ std.fs.path.sep_str ++ "midirecorder.zig");
+//        exe.setTarget(target);
+//        exe.setBuildMode(optimize);
+//        exe.install();
+//        exe.step.dependOn(&zigwin32_repo.step);
+//        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+//        exe.addPackagePath("win32", zigwin32_index_file);
+//
+//        exe.addPackage(.{
+//            .name = "audio",
+//            .path = .{ .path = "audio.zig" },
+//            .dependencies = &[_]std.build.Pkg{
+//                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+//            }
+//        });
+//    }
+//
+//    {
+//        const exe = b.addExecutable("midipatch", "tools" ++ std.fs.path.sep_str ++ "midipatch.zig");
+//        exe.setTarget(target);
+//        exe.setBuildMode(optimize);
+//        exe.install();
+//        exe.step.dependOn(&zigwin32_repo.step);
+//        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+//        exe.addPackagePath("win32", zigwin32_index_file);
+//
+//        virtual_midi_sdk.addSdkPath(exe);
+//
+//        exe.addPackage(.{
+//            .name = "audio",
+//            .path = .{ .path = "audio.zig" },
+//            .dependencies = &[_]std.build.Pkg{
+//                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+//            }
+//        });
+//    }
+//
+//    const have_virtual_midi_sdk = virtual_midi_sdk.haveVirtualMidiSdk();
+//
+//    {
+//        const exe = b.addExecutable("midilogger", "tools" ++ std.fs.path.sep_str ++ "midilogger.zig");
+//        exe.setTarget(target);
+//        exe.setBuildMode(optimize);
+//        exe.step.dependOn(&zigwin32_repo.step);
+//        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+//        exe.addPackagePath("win32", zigwin32_index_file);
+//
+//        virtual_midi_sdk.addSdkPath(exe);
+//
+//        exe.addPackage(.{
+//            .name = "audio",
+//            .path = .{ .path = "audio.zig" },
+//            .dependencies = &[_]std.build.Pkg{
+//                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+//            }
+//        });
+//
+//        const install_step = b.addInstallArtifact(exe);
+//        b.step("midilogger", "Build/Install the midilogger tool").dependOn(&install_step.step);
+//        if (have_virtual_midi_sdk) {
+//            b.default_step.dependOn(&install_step.step);
+//        }
+//    }
+//
+//    {
+//        const exe = b.addExecutable("midimaestro", "tools" ++ std.fs.path.sep_str ++ "midimaestro.zig");
+//        exe.setTarget(target);
+//        exe.setBuildMode(optimize);
+//        exe.step.dependOn(&zigwin32_repo.step);
+//        const zigwin32_index_file = b.pathJoin(&.{zigwin32_repo.getPath(&exe.step), "win32.zig"});
+//        exe.addPackagePath("win32", zigwin32_index_file);
+//
+//        virtual_midi_sdk.addSdkPath(exe);
+//
+//        exe.addPackage(.{
+//            .name = "audio",
+//            .path = .{ .path = "audio.zig" },
+//            .dependencies = &[_]std.build.Pkg{
+//                std.build.Pkg{ .name = "win32", .path = .{ .path = zigwin32_index_file } },
+//            }
+//        });
+//
+//        const install_step = b.addInstallArtifact(exe);
+//        b.step("midimaestro", "Build/Install the midimaestro tool").dependOn(&install_step.step);
+//        if (have_virtual_midi_sdk) {
+//            b.default_step.dependOn(&install_step.step);
+//        }
+//    }
 }
 
 const virtual_midi_sdk = struct {

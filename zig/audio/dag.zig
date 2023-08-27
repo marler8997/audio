@@ -12,15 +12,15 @@ pub const OutputNode = struct {
 
 pub const AudioGenerator = struct {
     // Some generators may need to know how many output nodes are connected
-    connectOutputNode: fn(self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
+    connectOutputNode: *const fn(self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
     // Some generators may need to know how many output nodes are connected
-    disconnectOutputNode: fn(self: *AudioGenerator, ouptutNode: *OutputNode) anyerror!void,
+    disconnectOutputNode: *const fn(self: *AudioGenerator, ouptutNode: *OutputNode) anyerror!void,
 
-    mix : fn(self: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void,
+    mix : *const fn(self: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void,
     // This let's the audio generator that is can clean up any state for this frame.
     // This function must be called after each buffer is done being rendered.
     // This function may be called more than once before the next mix/set call.
-    renderFinished: fn(self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
+    renderFinished: *const fn(self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
 };
 
 //// A node that inputs midi notes
@@ -48,11 +48,11 @@ pub const MidiGenerator = struct {
     // going to request events from them.
     //void function(T* context, void* instrument) connectInstrument;
 
-    //getMidiEvents: fn(self: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent,
+    //getMidiEvents: *const fn(self: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent,
 
     // This let's the midi input node that it can now clean up all it's events.
     // This function must be called after each buffer is done being rendered.
-    renderFinished: fn(self: *MidiGenerator, instrument: *MidiInstrument) void,
+    renderFinished: *const fn(self: *MidiGenerator, instrument: *MidiInstrument) void,
 };
 
 pub const MidiGeneratorTypeAImpl = struct {
@@ -211,9 +211,9 @@ pub const MidiGeneratorTypeAImpl = struct {
 //}
 
 const MidiInstrumentTypeAImpl = struct {
-    newNote: fn(self: *MidiInstrumentTypeAImpl) void,//, event: *MidiEvent, state: *NoteState) void,
-    reattackNote: fn(self: *MidiInstrumentTypeAImpl) void,
-    renderNote: fn(self: *MidiInstrumentTypeAImpl) void,
+    newNote: *const fn(self: *MidiInstrumentTypeAImpl) void,//, event: *MidiEvent, state: *NoteState) void,
+    reattackNote: *const fn(self: *MidiInstrumentTypeAImpl) void,
+    renderNote: *const fn(self: *MidiInstrumentTypeAImpl) void,
 };
 
 pub fn createSawMidiInstrument(allocator: *std.mem.Allocator) !*MidiInstrument {

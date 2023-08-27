@@ -1,3 +1,5 @@
+const MidiReader = @This();
+
 const std = @import("std");
 const midilog = std.log.scoped(.midi);
 
@@ -14,23 +16,23 @@ const fmtMmsyserr = mmsystem.fmtMmsyserr;
 callback: audio.midi.ReaderCallback,
 handle: win32.HMIDIIN,
 
-pub fn init(callback: audio.midi.ReaderCallback) @This() {
-    return @This() {
+pub fn init(callback: audio.midi.ReaderCallback) MidiReader {
+    return MidiReader {
         .callback = callback,
         .handle = undefined,
     };
 }
 
-// NOTE: start is seperated from init because we need to pass a pointer to @This()
+// NOTE: start is seperated from init because we need to pass a pointer to MidiReader
 //       to the midiInOpen function.
-pub fn start(self: *@This(), device_id: u32) error{AlreadyReported}!void {
+pub fn start(self: *MidiReader, device_id: u32) error{AlreadyReported}!void {
     {
         const result = win32.midiInOpen(
             // TODO: this cast shouldn't be necessary, file an issue?
-            @ptrCast(*?win32.HMIDIIN, &self.handle),
+            @ptrCast(&self.handle),
             device_id,
-            @ptrToInt(inCallback),
-            @ptrToInt(self),
+            @intFromPtr(&inCallback),
+            @intFromPtr(self),
             win32.CALLBACK_FUNCTION);
         if (result != win32.MMSYSERR_NOERROR) {
             midilog.err("midiInOpen failed, error={}", .{fmtMmsyserr(result)});
@@ -52,7 +54,7 @@ pub fn start(self: *@This(), device_id: u32) error{AlreadyReported}!void {
 }
 
 /// do not call stop unless start was called
-pub fn stop(self: @This()) void {
+pub fn stop(self: MidiReader) void {
     {
         const result = win32.midiInStop(self.handle);
         if (result != win32.MMSYSERR_NOERROR)
@@ -73,7 +75,7 @@ fn inCallback(
     param2: usize
 ) callconv(std.os.windows.WINAPI) void {
     _ = handle;
-    var device = @intToPtr(*@This(), instance);
+    var device: *MidiReader = @ptrFromInt(instance);
     switch (msg) {
         win32.MM_MIM_OPEN => {
             midilog.debug("[MidiListenCallback] open", .{});
@@ -82,10 +84,10 @@ fn inCallback(
             midilog.debug("[MidiListenCallback] close", .{});
         },
         win32.MM_MIM_DATA => {
-            const midi_msg = audio.midi.MidiMsgUnion { .bytes = [3]u8 {
-                @intCast(u8, (param1 >>  0) & 0xFF),
-                @intCast(u8, (param1 >>  8) & 0xFF),
-                @intCast(u8, (param1 >> 16) & 0xFF),
+            const midi_msg = audio.midi.MidiMsgUnion { .bytes = .{
+                .@"0" = @intCast((param1 >>  0) & 0xFF),
+                .@"1" = @intCast((param1 >>  8) & 0xFF),
+                .@"2" = @intCast((param1 >> 16) & 0xFF),
             }};
             device.callback(param2, midi_msg.msg);
         },

@@ -48,7 +48,7 @@ pub const RenderFormatFloat32 = struct {
     }
     pub fn intToSample(int: anytype) f32 {
         switch (@TypeOf(int)) {
-            i32, u32 => return @intToFloat(f32, int),
+            i32, u32 => return @floatFromInt(int),
             else => @compileError("unsupported int: " ++ @typeName(@TypeOf(int))),
         }
     }
@@ -83,7 +83,7 @@ pub fn Template(comptime Format: type) type { return struct {
             mix: *const Mix,
             next_buffer: [*]Sample,
             pub fn next(self: *SampleIterator) ?SampleRef {
-                if (@ptrToInt(self.next_buffer) >= @ptrToInt(self.mix.buffer_limit)) {
+                if (@intFromPtr(self.next_buffer) >= @intFromPtr(self.mix.buffer_limit)) {
                     std.debug.assert(self.next_buffer == self.mix.buffer_limit);
                     return null;
                 }
@@ -116,12 +116,12 @@ pub fn Template(comptime Format: type) type { return struct {
 
         pub fn setF32(self: Knob, context: usize, value: f32) void {
             switch (self) {
-                .float_field => |k| @intToPtr(*f32, context + k.field_offset).* = std.math.clamp(value, k.min, k.max),
+                .float_field => |k| @as(*f32, @ptrFromInt(context + k.field_offset)).* = std.math.clamp(value, k.min, k.max),
                 .float_cb => |k| {
                     var set_value = std.math.clamp(value, k.min, k.max);
                     k.cb(context, &set_value, .set);
                 },
-                .sample_field => |k| @intToPtr(*Sample, context + k.field_offset).* = Format.f32ToSample(value),
+                .sample_field => |k| @as(*Sample, @ptrFromInt(context + k.field_offset)).* = Format.f32ToSample(value),
             }
         }
     };
@@ -153,16 +153,16 @@ pub fn Template(comptime Format: type) type { return struct {
         // These are the Runtime Interfaces I may or may not use
         // I might create code that turns the Comptime Interfaces into Runtime Interfaces autmoatically.
         //pub const Component = struct {
-        //    queryKnobs: fn(knobs: std.ArrayList(Knob)) void,
+        //    queryKnobs: *const fn(knobs: std.ArrayList(Knob)) void,
         //};
         //pub const Generator = struct {
         //    component: Component,
-        //    setFreq: fn(self: *Generator) void
-        //    renderOne: fn(self: *Generator) Sample,
+        //    setFreq: *const fn(self: *Generator) void
+        //    renderOne: *const fn(self: *Generator) Sample,
         //};
         //pub const Filter = struct {
         //    component: Component,
-        //    filterOne: fn(self: *Filter, sample: Sample) Sample,
+        //    filterOne: *const fn(self: *Filter, sample: Sample) Sample,
         //};
 
         /// Chains a Generator and one or more Filters into a new Generator.
@@ -184,7 +184,7 @@ pub fn Template(comptime Format: type) type { return struct {
                 return sample;
             }
 
-            usingnamespace ForwardSetFreq(*@This(), "generator");
+            pub usingnamespace ForwardSetFreq(*@This(), "generator");
         };}
 
         pub fn ForwardSetFreq(comptime T: type, comptime field: []const u8) type { return struct {
@@ -203,9 +203,9 @@ pub fn Template(comptime Format: type) type { return struct {
                 // TODO: implement this
             }
 
-            usingnamespace if (@hasDecl(Component, "renderOneSample")) struct {
+            pub usingnamespace if (@hasDecl(Component, "renderOneSample")) struct {
                 pub fn renderOneSample(self: *Self) Sample {
-                    self.changer.nextSample(knob, @ptrToInt(&self.component));
+                    self.changer.nextSample(knob, @intFromPtr(&self.component));
                     return self.component.renderOneSample();
                 }
             } else @compileError("unknown component type or not implemented: " ++ @typeName(Component));
@@ -279,12 +279,12 @@ pub fn Template(comptime Format: type) type { return struct {
             }
             pub fn freqToIncrement(frequency: f32) TrigUnit {
                 // TODO: what to do if frequency ratio is greater than 2.0 ???
-                return .{ .val = frequency / @intToFloat(f32, audio.global.sampleFramesPerSec) };
+                return .{ .val = frequency / @as(f32, @floatFromInt(audio.global.sampleFramesPerSec)) };
             }
             fn freqCb(context: usize, freq_ref: *f32, access: Access) void {
-                const self = @intToPtr(*SawTrigUnitGenerator, context);
+                const self: *SawTrigUnitGenerator = @ptrFromInt(context);
                 switch (access) {
-                    .get => freq_ref.* = self.increment.val * @intToFloat(f32, audio.global.sampleFramesPerSec),
+                    .get => freq_ref.* = self.increment.val * @as(f32, @floatFromInt(audio.global.sampleFramesPerSec)),
                     .set => self.increment = freqToIncrement(freq_ref.*),
                 }
             }
@@ -307,7 +307,7 @@ pub fn Template(comptime Format: type) type { return struct {
             pub fn renderOneSample(self: *@This()) Sample {
                 return Format.trigUnitToSample(self.unit_generator.renderOneTrigUnit());
             }
-            usingnamespace ForwardSetFreq(*@This(), "unit_generator");
+            pub usingnamespace ForwardSetFreq(*@This(), "unit_generator");
         }; }
 
 
@@ -415,11 +415,11 @@ pub fn Template(comptime Format: type) type { return struct {
                 if (self.event_tick == self.event_sample_time) {
                     self.event_tick = 0;
 
-                    const next_note: u8 = @enumToInt(self.note) + self.note_inc;
-                    if (next_note >= @enumToInt(self.note_end)) {
+                    const next_note: u8 = @intFromEnum(self.note) + self.note_inc;
+                    if (next_note >= @intFromEnum(self.note_end)) {
                         self.note = self.note_start;
                     } else {
-                        self.note = @intToEnum(audio.midi.MidiNote, @intCast(u7, next_note));
+                        self.note = @enumFromInt(next_note);
                     }
                     knob.setF32(knob_context, audio.midi.getStdFreq(self.note));
                 } else {
@@ -441,13 +441,13 @@ pub fn Template(comptime Format: type) type { return struct {
         //};}
 
         pub fn renderGenerator(comptime T: type, generator: *T, out: Mix) void {
-            comptime std.debug.assert(@typeInfo(@TypeOf(T.renderOneSample)).Fn.args[0].arg_type == *T);
+            comptime std.debug.assert(@typeInfo(@TypeOf(T.renderOneSample)).Fn.params[0].type == *T);
             renderGeneratorImpl(
-                @ptrToInt(generator),
-                @ptrCast(OpaqueFn(@TypeOf(T.renderOneSample)), T.renderOneSample),
+                @intFromPtr(generator),
+                @ptrCast(&T.renderOneSample),
                 out);
         }
-        fn renderGeneratorImpl(context: usize, renderOneSampleFn: fn(usize) align(1) Sample, out: Mix) void {
+        fn renderGeneratorImpl(context: usize, renderOneSampleFn: *const fn(usize) align(1) Sample, out: Mix) void {
             var it = out.sampleIterator();
             while (it.next()) |sample| {
                 sample.add(renderOneSampleFn(context));

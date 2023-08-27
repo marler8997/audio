@@ -7,7 +7,7 @@ const OutputNode = audio.dag.OutputNode;
 const AudioGenerator = audio.dag.AudioGenerator;
 
 fn sawFrequencyToIncrement(frequency: f32) f32 {
-    return frequency / @intToFloat(f32, audio.global.sampleFramesPerSec);
+    return frequency / @as(f32, @floatFromInt(audio.global.sampleFramesPerSec));
 }
 
 pub const SawGenerator = struct {

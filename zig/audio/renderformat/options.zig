@@ -10,8 +10,8 @@ pub const pcm16 = struct {
     pub const type_ = audio.renderformat.RenderFormatType.pcm16;
     pub const SamplePoint = i16;
     pub const MaxAmplitudeF32 : f32 = 32767.0;
-    pub fn toF32(point: SamplePoint) f32 { return @intToFloat(f32, point); }
-    pub fn f32ToSamplePoint(point: f32) SamplePoint { return @floatToInt(SamplePoint, point); }
+    pub fn toF32(point: SamplePoint) f32 { return @floatFromInt(point); }
+    pub fn f32ToSamplePoint(point: f32) SamplePoint { return @intFromFloat(point); }
 //    static ref short getSampleRef(void* block)
 //    {
 //        return (cast(short*)block)[0];

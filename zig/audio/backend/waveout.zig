@@ -71,10 +71,10 @@ fn startingRenderLoop() anyerror!void {
     //stdext.debug.dumpData("WAVEFORMATEX", stdext.debug.ptrData(&global.waveFormat));
     const result = win32.waveOutOpen(
         // TODO: this ptrCast shouldn't be necessary, file an issue?
-        @ptrCast(*?win32.HWAVEOUT, &global.waveOut),
+        @ptrCast(&global.waveOut),
         win32.WAVE_MAPPER,
         &global.waveFormat.Format,
-        @ptrToInt(waveOutCallback),
+        @intFromPtr(&waveOutCallback),
         0,
         win32.CALLBACK_FUNCTION,
     );
@@ -102,9 +102,13 @@ fn writeBuffer(renderBuffer: [*]const SamplePoint) anyerror!void {
     //now.update();
 
     // Since we are using the same format as Render format, no need to convert
-    @memcpy(global.backBuffer.base.lpData.?, @ptrCast([*]const u8, renderBuffer),
-        audio.global.bufferSampleFrameCount * audio.global.channelCount * @sizeOf(SamplePoint));
-
+    //@memcpy(global.backBuffer.base.lpData.?, @ptrCast([*]const u8, renderBuffer),
+    //    audio.global.bufferSampleFrameCount * audio.global.channelCount * @sizeOf(SamplePoint));
+    {
+        const dest = global.backBuffer.base.lpData.?;
+        const len = audio.global.bufferSampleFrameCount * audio.global.channelCount * @sizeOf(SamplePoint);
+        @memcpy(dest[0 .. len], @as([*]const u8, @ptrCast(renderBuffer)));
+    }
 
     //if (audio.global.channelCount == 1)
     //{
@@ -206,12 +210,12 @@ fn setupGlobalData() anyerror!void {
 
     // Setup Buffers
     global.playBufferSize = audio.global.bufferSampleFrameCount * global.waveFormat.Format.nBlockAlign;
-    for (global.waveHeaders) |*waveHeader| {
+    for (&global.waveHeaders) |*waveHeader| {
         waveHeader.base.dwBufferLength = global.playBufferSize;
         var buffer = try audio.global.allocator.alloc(SamplePoint, global.playBufferSize);
         // https://github.com/microsoft/win32metadata/issues/483
         //waveHeader.base.lpData = @ptrCast([*]u8, buffer.ptr);
-        waveHeader.base.lpData = @ptrCast([*:0]u8, buffer.ptr);
+        waveHeader.base.lpData = @ptrCast(buffer.ptr);
         waveHeader.freeEvent = win32.CreateEventA(null, 1, 1, null) orelse {
             audiooutlog.err("CreateEventA failed, e={}", .{win32.GetLastError()});
             return error.BadValue;
@@ -239,8 +243,7 @@ pub fn waveOutCallback(
     } else if (msg == win32.MM_WOM_DONE) {
         ////logDebug("[tid=", GetCurrentThreadId(), "] waveOutCallback (msg=", msg, " WOM_DONE)");
         //logDebug("WOM_DONE (instance={},param1={},param2={})", instance, param1, param2);
-        const header = @fieldParentPtr(CustomWaveHeader, "base",
-            @intToPtr(*win32.WAVEHDR, @ptrToInt(param1)));
+        const header = @fieldParentPtr(CustomWaveHeader, "base", @as(*win32.WAVEHDR, @ptrCast(param1)));
         //printf("[DEBUG] header (dwBufferLength=%d,data=0x%p)\n",
         //header->dwBufferLength, header->data);
         //QueryPerformanceCounter(&header.setEventTime);

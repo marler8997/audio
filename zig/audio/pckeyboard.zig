@@ -229,7 +229,7 @@ fn inputThread2() !void {
                 //const down = keyEvent.getKeyDown();
                 //logDebug("KEY_EVENT code={} {}", code, if (down) "down" else "up");
 
-                if (code == @enumToInt(win32.VK_ESCAPE)) {
+                if (code == @intFromEnum(win32.VK_ESCAPE)) {
                     inputlog.info("ESC key pressed", .{});
                     break :inputLoop;
                 }

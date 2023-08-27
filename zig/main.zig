@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const audio = @import("./audio.zig");
+const audio = @import("audio.zig");
 
 
 //import mar.from;

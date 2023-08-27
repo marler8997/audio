@@ -29,10 +29,10 @@ pub const ConsoleMode = struct {
         var newMode = mode.oldValue;
         // workaround error: unable to perform binary not operation on type 'comptime_int'
         const flagsToDisable : u32 =
-            @enumToInt(win32.ENABLE_ECHO_INPUT)       // disable echo
-            | @enumToInt(win32.ENABLE_LINE_INPUT)       // disable line input, we want characters immediately
-            | @enumToInt(win32.ENABLE_PROCESSED_INPUT); // we'll handle CTL-C so we can cleanup and reset the console mode
-        newMode = @intToEnum(win32.CONSOLE_MODE, @enumToInt(newMode) & ~flagsToDisable);
+            @intFromEnum(win32.ENABLE_ECHO_INPUT)       // disable echo
+            | @intFromEnum(win32.ENABLE_LINE_INPUT)       // disable line input, we want characters immediately
+            | @intFromEnum(win32.ENABLE_PROCESSED_INPUT); // we'll handle CTL-C so we can cleanup and reset the console mode
+        newMode = @enumFromInt(@intFromEnum(newMode) & ~flagsToDisable);
         inputlog.info("Current console mode 0x{x}, setting to 0x{x}", .{mode.oldValue, newMode});
 
         if(0 == win32.SetConsoleMode(stdin.handle, newMode))
@@ -64,7 +64,7 @@ pub fn InputEvents(comptime maxSize: comptime_int) type {
             var stdin = std.io.getStdIn();
             var inputCount : u32 = undefined;
             if(0 == win32.ReadConsoleInputA(
-                stdin.handle, @ptrCast([*]win32.INPUT_RECORD, &self.buffer[0]), maxSize, &inputCount))
+                stdin.handle, @ptrCast(&self.buffer[0]), maxSize, &inputCount))
             {
                 inputlog.err("Error: ReadConsoleInput failed, e={}", .{win32.GetLastError()});
                 return error.Unexpected;
