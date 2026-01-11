@@ -1,0 +1,17 @@
+.{
+    .name = .audio,
+    .fingerprint = 0x187d3695444ae0e2,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .zin = .{
+            .url = "git+https://github.com/marler8997/zin#d3f292c86a42d7ff071152e472a2628d3bdcba73",
+            .hash = "zin-0.0.0-W7QDx9BaAwCf92GJqTr9T2i1hJkIov7yE2C5iP1Rd19r",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
