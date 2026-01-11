@@ -1,23 +1,14 @@
 const std = @import("std");
-const win32 = struct {
-    usingnamespace @import("win32").media;
-};
+const win32 = @import("win32").everything;
 
-pub fn fmtMmsyserr(error_code: u32)  MmsyserrFormatter {
+pub fn fmtMmsyserr(error_code: u32) MmsyserrFormatter {
     return .{ .error_code = error_code };
 }
 const MmsyserrFormatter = struct {
     error_code: u32,
-    pub fn format(
-        self: MmsyserrFormatter,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        const name =  mmsyserrorName(self.error_code) orelse @as([]const u8, "?");
-        try writer.print("{d}({s})", .{self.error_code, name});
+    pub fn format(self: MmsyserrFormatter, writer: *std.Io.Writer) error{WriteFailed}!void {
+        const name = mmsyserrorName(self.error_code) orelse @as([]const u8, "?");
+        try writer.print("{d}({s})", .{ self.error_code, name });
     }
 };
 

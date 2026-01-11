@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const ConsoleMode = struct {
     pub fn setup() anyerror!ConsoleMode {
-        return ConsoleMode { };
+        return ConsoleMode{};
     }
     pub fn restore(self: *ConsoleMode) void {
         _ = self;
@@ -13,8 +13,7 @@ pub fn InputEvents(comptime maxSize: comptime_int) type {
     _ = maxSize;
     return struct {
         pub fn init() @This() {
-            return @This() {
-            };
+            return @This(){};
         }
         pub fn read(self: *@This()) ![]InputEvent {
             _ = self;
@@ -28,7 +27,7 @@ pub const KEY_ESCAPE = 0;
 
 const InputEvent = packed union {
     //Record: INPUT_RECORD,
-    KeyEvent : KeyEvent,
+    key_event: KeyEvent,
 
     pub fn getEventType(self: *const InputEvent) u32 {
         _ = self;

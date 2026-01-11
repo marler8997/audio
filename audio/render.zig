@@ -15,20 +15,20 @@ const AudioGenerator = audio.dag.AudioGenerator;
 pub const global = struct {
     // Meant to lock access to the render node graph to keep nodes
     // or data inside it from being modified during a render.
-    pub var renderLock = std.Thread.Mutex { };
+    pub var renderLock = std.Thread.Mutex{};
 
     // The generators connected directly to the audio backend
-    var rootAudioGenerators: std.ArrayList(*AudioGenerator) = undefined;
+    var rootAudioGenerators: std.ArrayList(*AudioGenerator) = .{};
 
-    var mainOutputNode = OutputNode {};
+    var mainOutputNode = OutputNode{};
 
     var event_queue_mutex: std.Thread.Mutex = std.Thread.Mutex{};
     var event_queue_open_index: u1 = 0;
-    var event_queues: [2]std.ArrayList(Event) = undefined;
+    var event_queues: [2]std.ArrayList(Event) = [1]std.ArrayList(Event){.{}} ** 2;
     pub fn addEvent(event: Event) !void {
         event_queue_mutex.lock();
         defer event_queue_mutex.unlock();
-        try event_queues[event_queue_open_index].append(event);
+        try event_queues[event_queue_open_index].append(audio.global.allocator, event);
     }
 };
 
@@ -44,10 +44,9 @@ pub fn addMidiEvent(timestamp: usize, msg: audio.midi.MidiMsg) void {
     };
 }
 
-
 // there should be something in std for this?
 pub fn allOnes(comptime Uint: type) Uint {
-    return @intCast(Uint, 0) -% 1;
+    return @as(Uint, 0) -% 1;
 }
 
 test "allOnes" {
@@ -59,7 +58,7 @@ const Event = struct {
     //const Timestamp = u5; // note: using low bit types like u5 to make sure rollover works properly
     const Timestamp = u16; // note: using low bit types like u5 to make sure rollover works properly
     pub fn now() Timestamp {
-        return @intCast(Timestamp, std.time.milliTimestamp() & allOnes(Timestamp));
+        return @intCast(std.time.milliTimestamp() & allOnes(Timestamp));
     }
 
     timestamp: Timestamp,
@@ -68,11 +67,6 @@ const Event = struct {
     },
 };
 
-pub fn init() anyerror!void {
-    global.rootAudioGenerators = std.ArrayList(*AudioGenerator).init(audio.global.allocator);
-    global.event_queues[0] = std.ArrayList(Event).init(audio.global.allocator);
-    global.event_queues[1] = std.ArrayList(Event).init(audio.global.allocator);
-}
 pub fn addRootAudioGenerator(generator: *AudioGenerator) !void {
     try generator.connectOutputNode(generator, &global.mainOutputNode);
 
@@ -108,7 +102,7 @@ fn renderThread2() !void {
     //        logDebug("Setting thread priority to ", ThreadPriority.timeCritical);
     //        if (SetThreadPriority(thread, ThreadPriority.timeCritical).failed)
     //        {
-    //            logError("Failed to set thread priority, e={}", GetLastError());
+    //            logError("Failed to set thread priority, e={f}", GetLastError());
     //            return 1; // fail
     //        }
     //    }
@@ -116,15 +110,14 @@ fn renderThread2() !void {
 
     const renderBufferSampleCount = audio.global.bufferSampleFrameCount * audio.global.channelCount;
     std.log.debug("renderBufferSampleCount {}", .{renderBufferSampleCount});
-    var renderBuffer = try audio.global.allocator.alloc(SamplePoint, renderBufferSampleCount);
+    const renderBuffer = try audio.global.allocator.alloc(SamplePoint, renderBufferSampleCount);
     defer audio.global.allocator.free(renderBuffer);
 
     var channels = try audio.global.allocator.alloc(u8, audio.global.channelCount);
     defer audio.global.allocator.free(channels);
     {
-        var i : u8 = 0;
-        while (i < audio.global.channelCount)
-        {
+        var i: u8 = 0;
+        while (i < audio.global.channelCount) {
             channels[i] = i;
             i += 1;
         }
@@ -142,7 +135,7 @@ fn renderLoop(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]Sampl
     global_render2_thing.generator.unit_generator.increment = Render2.singlestep.SawTrigUnitGenerator.freqToIncrement(audio.midi.getStdFreq(audio.midi.MidiNote.a4));
     global_render2_thing2.generator.unit_generator.increment = Render2.singlestep.SawTrigUnitGenerator.freqToIncrement(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
     global_render2_thing3.component.generator.unit_generator.increment = Render2.singlestep.SawTrigUnitGenerator.freqToIncrement(audio.midi.getStdFreq(audio.midi.MidiNote.csharp4));
-    global_render2_thing3.changer.event_sample_time = @floatToInt(usize, @intToFloat(f32, audio.global.sampleFramesPerSec) * 0.3);
+    global_render2_thing3.changer.event_sample_time = @intFromFloat(@as(f32, @floatFromInt(audio.global.sampleFramesPerSec)) * 0.3);
 
     try render(channels, bufferStart, bufferLimit);
     //version (DebugDumpRender)
@@ -160,8 +153,7 @@ fn renderLoop(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]Sampl
     //}
     try audio.global.backendFuncs.writeFirstBuffer(bufferStart);
 
-    while(true)
-    {
+    while (true) {
         //logDebug("Rendering buffer ", bufferIndex);
         //renderStartTick.update();
         try render(channels, bufferStart, bufferLimit);
@@ -180,7 +172,6 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
         break :blk closed_index;
     };
 
-
     // TODO: if there are any generators that have a "set" function, then I
     //       could use that first and skip zeroing memory
     //
@@ -188,8 +179,6 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
     // TODO: which one is faster????
     stdext.mem.set(limitarray.limitPointersToSlice(bufferStart, bufferLimit), 0);
     //stdext.mem.secureZero(limitPointersToSlice(bufferStart, bufferLimit));
-
-
 
     global.renderLock.lock();
     defer global.renderLock.unlock();
@@ -201,9 +190,8 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
         try generator.renderFinished(generator, &global.mainOutputNode);
     }
 
-
     var frames_left = audio.global.bufferSampleFrameCount;
-    var mix = Render2.Mix {
+    var mix = Render2.Mix{
         .channels = channels,
         .buffer_start = bufferStart,
         .buffer_limit = bufferLimit,
@@ -217,8 +205,7 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
         }
         last_diff = diff_ms;
         // convert ms to samples
-        const diff_frames = @floatToInt(u32, std.math.round(
-            @intToFloat(f32, audio.global.sampleFramesPerSec) * (@intToFloat(f32, diff_ms) / 1000)));
+        const diff_frames: u32 = @intFromFloat(std.math.round(@as(f32, @floatFromInt(audio.global.sampleFramesPerSec)) * (@as(f32, @floatFromInt(diff_ms)) / 1000)));
         //std.log.info("{} ms ago ({} frames out of {}): {}", .{diff_ms, diff_frames, audio.global.bufferSampleFrameCount, event.kind});
 
         const enable_partial_buffer_rendering = true;
@@ -228,11 +215,7 @@ fn render(channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoi
                 //std.log.info("partially rendering {} frames", .{frames_to_render});
                 const sample_count = frames_to_render * audio.global.channelCount;
                 const buffer_limit = mix.buffer_start + sample_count;
-                renderMix(.{
-                    .channels = mix.channels,
-                    .buffer_start = mix.buffer_start,
-                    .buffer_limit = buffer_limit
-                });
+                renderMix(.{ .channels = mix.channels, .buffer_start = mix.buffer_start, .buffer_limit = buffer_limit });
                 mix.buffer_start = buffer_limit;
                 frames_left -= frames_to_render;
             }
@@ -255,7 +238,7 @@ fn renderMix(mix: Render2.Mix) void {
     //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing2), &global_render2_thing2, mix);
     //Render2.renderSingleStepGenerator(@TypeOf(global_render2_thing3), &global_render2_thing3, mix);
     //Render2.renderSingleStepGenerator(@TypeOf(global_temp_midi_render2_instrument), &global_temp_midi_render2_instrument, mix);
-    for (global_temp_midi_channel_voices) |*channel_voice| {
+    for (&global_temp_midi_channel_voices) |*channel_voice| {
         for (channel_voice.getCurrentVoices()) |*voice| {
             Render2.singlestep.renderGenerator(@TypeOf(voice.renderer), &voice.renderer, mix);
         }
@@ -268,31 +251,28 @@ const Render2 = renderv2.Template(renderv2.RenderFormatFloat32);
 //    .next_sample = 0,
 //    .increment = 0.005,
 //};
-var global_render2_thing = Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type {Render2.singlestep.VolumeFilter}) {
+var global_render2_thing = Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type{Render2.singlestep.VolumeFilter}){
     .generator = .{ .unit_generator = .{ .increment = undefined } },
     .filters = .{
         .{ .volume = 0.02 },
     },
 };
-var global_render2_thing2 = Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type {Render2.singlestep.VolumeFilter}) {
+var global_render2_thing2 = Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type{Render2.singlestep.VolumeFilter}){
     .generator = .{ .unit_generator = .{ .increment = undefined } },
     .filters = .{
         .{ .volume = 0.02 },
     },
 };
 
-var global_render2_thing3 = Render2.singlestep.AttachedKnob(
-    Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type {Render2.singlestep.VolumeFilter}),
-    Render2.singlestep.NoteFreqF32KnobChanger,
+var global_render2_thing3 = Render2.singlestep.AttachedKnob(Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type{Render2.singlestep.VolumeFilter}), Render2.singlestep.NoteFreqF32KnobChanger,
     //Render2.singlestep.SawFullSampleGenerator.frequency_knob
-    Render2.singlestep.SawTrigUnitGenerator.frequency_knob
-) {
+    Render2.singlestep.SawTrigUnitGenerator.frequency_knob){
     .component = .{
-        .generator = .{ .unit_generator = Render2.singlestep.SawTrigUnitGenerator {
+        .generator = .{ .unit_generator = Render2.singlestep.SawTrigUnitGenerator{
             .increment = undefined,
-        }},
+        } },
         .filters = .{
-            Render2.singlestep.VolumeFilter { .volume = 0.02 },
+            Render2.singlestep.VolumeFilter{ .volume = 0.02 },
         },
     },
     .changer = Render2.singlestep.NoteFreqF32KnobChanger.init(.{
@@ -303,78 +283,71 @@ var global_render2_thing3 = Render2.singlestep.AttachedKnob(
     }),
 };
 
-pub const known_ccs = [_]u7 { 70 };
-pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type { return struct {
-    const Index = std.math.IntFittingRange(0, count - 1);
-    const Voice = struct {
-        renderer: Renderer,
-        note: audio.midi.MidiNote,
-        current_note_velocity: u7,
+pub const known_ccs = [_]u7{70};
+pub fn MidiVoices(comptime count: comptime_int, comptime Renderer: type) type {
+    return struct {
+        const Index = std.math.IntFittingRange(0, count - 1);
+        const Voice = struct {
+            renderer: Renderer,
+            note: audio.midi.MidiNote,
+            current_note_velocity: u7,
 
-        pub fn updateVelocity(self: *@This(), cc_velocity: u7) void {
-            //self.renderer.setVelocity(
-            self.renderer.filters[volume_filter_index].volume = (
-                (@intToFloat(f32, self.current_note_velocity) / 127.0) *
-                volume_scale *
-                (0.5 + @intToFloat(f32, cc_velocity) / 127.0)
-            );
-        }
-
-        pub fn updateCC(self:*@This(), num: u7, velocity: u7) void {
-            switch (num) {
-                70 => self.updateVelocity(velocity), // for now we will hard code 70 to be a volume booster
-                else => {}, // just ignore the rest for now
+            pub fn updateVelocity(self: *@This(), cc_velocity: u7) void {
+                //self.renderer.setVelocity(
+                self.renderer.filters[volume_filter_index].volume = ((@as(f32, @floatFromInt(self.current_note_velocity)) / 127.0) *
+                    volume_scale *
+                    (0.5 + @as(f32, @floatFromInt(cc_velocity)) / 127.0));
             }
+
+            pub fn updateCC(self: *@This(), num: u7, velocity: u7) void {
+                switch (num) {
+                    70 => self.updateVelocity(velocity), // for now we will hard code 70 to be a volume booster
+                    else => {}, // just ignore the rest for now
+                }
+            }
+        };
+
+        count: std.math.IntFittingRange(0, count) = 0,
+        available_voices: [count]Voice = undefined,
+        bend_value: u14 = 8192,
+        cc_velocities: [127]u7 = [_]u7{0} ** 127,
+
+        pub fn getCurrentVoices(self: *@This()) []Voice {
+            return self.available_voices[0..self.count];
+        }
+        pub fn addAssumeCapacity(self: *@This(), note: audio.midi.MidiNote, on_note_velocity: u7, renderer: Renderer) void {
+            std.debug.assert(self.count < self.available_voices.len);
+            self.available_voices[self.count] = .{ .note = note, .current_note_velocity = on_note_velocity, .renderer = renderer };
+            self.count += 1;
+        }
+        pub fn find(self: *@This(), note: audio.midi.MidiNote) ?Index {
+            var i: Index = 0;
+            while (i < self.count) : (i += 1) {
+                if (self.available_voices[i].note == note)
+                    return i;
+            }
+            return null;
+        }
+        pub fn remove(self: *@This(), voice_index: Index) void {
+            std.debug.assert(voice_index < self.count);
+            var i: std.math.IntFittingRange(0, count) = voice_index;
+            while (i + 1 < self.count) : (i += 1) {
+                self.available_voices[i] = self.available_voices[i + 1];
+            }
+            self.count -= 1;
         }
     };
-
-    count: std.math.IntFittingRange(0, count) = 0,
-    available_voices: [count]Voice = undefined,
-    bend_value: u14 = 8192,
-    cc_velocities: [127]u7 = [_]u7 {0} ** 127,
-
-    pub fn getCurrentVoices(self: *@This()) []Voice {
-        return self.available_voices[0..self.count];
-    }
-    pub fn addAssumeCapacity(self:*@This(), note: audio.midi.MidiNote, on_note_velocity: u7, renderer: Renderer) void {
-        std.debug.assert(self.count < self.available_voices.len);
-        self.available_voices[self.count] = .{
-            .note = note,
-            .current_note_velocity = on_note_velocity,
-            .renderer = renderer
-        };
-        self.count += 1;
-    }
-    pub fn find(self: *@This(), note: audio.midi.MidiNote) ?Index {
-        var i: Index = 0;
-        while (i < self.count) : (i += 1) {
-            if (self.available_voices[i].note == note)
-                return i;
-        }
-        return null;
-    }
-    pub fn remove(self: *@This(), voice_index: Index) void {
-        std.debug.assert(voice_index < self.count);
-        var i: std.math.IntFittingRange(0, count) = voice_index;
-        while (i + 1 < self.count) : (i += 1) {
-            self.available_voices[i] = self.available_voices[i+1];
-        }
-        self.count -= 1;
-    }
-};}
+}
 
 const volume_filter_index = 1;
 const volume_scale = 0.2;
-var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chain(
-    Render2.singlestep.SawFullSampleGenerator, &[_]type {
+var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chain(Render2.singlestep.SawFullSampleGenerator, &[_]type{
     //Render2.singlestep.SineGenerator, &[_]type {
-        //Render2.singlestep.SimpleLowPassFilter,
-        Render2.singlestep.BypassFilter,
-        //Render2.singlestep.CombFilter(10000, 5000),
-        Render2.singlestep.VolumeFilter,
-    }
-)) { .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}};
-
+    //Render2.singlestep.SimpleLowPassFilter,
+    Render2.singlestep.BypassFilter,
+    //Render2.singlestep.CombFilter(10000, 5000),
+    Render2.singlestep.VolumeFilter,
+})){ .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{} };
 
 //var global_temp_midi_render2_instrument = Render2.singlestep.MidiVoice(Render2.singlestep.Volume(Render2.singlestep.Saw)) {
 //    .note = .none,
@@ -387,8 +360,6 @@ var global_temp_midi_channel_voices = [16]MidiVoices(10, Render2.singlestep.Chai
 //    },
 //};
 pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
-
-
     switch (msg.kind) {
         .note_off, .note_on => {
             const off = (msg.kind == .note_off);
@@ -396,14 +367,14 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
             const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
 
             {
-                const note = @intToEnum(audio.midi.MidiNote, msg.data.note_on.note);
+                const note: audio.midi.MidiNote = @enumFromInt(msg.data.note_on.note);
                 if (channel_voices.find(note)) |voice_index| {
                     if (off or msg.data.note_on.velocity == 0) {
-                        std.log.debug("!!!! removing note={s} i={}", .{@tagName(note), voice_index});
+                        std.log.debug("!!!! removing note={s} i={}", .{ @tagName(note), voice_index });
                         channel_voices.remove(voice_index);
                     } else {
-                        std.log.debug("!!!! setting volume note={s} i={}", .{@tagName(note), voice_index});
-                        channel_voices.available_voices[voice_index].renderer.filters[volume_filter_index].volume = @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale;
+                        std.log.debug("!!!! setting volume note={s} i={}", .{ @tagName(note), voice_index });
+                        channel_voices.available_voices[voice_index].renderer.filters[volume_filter_index].volume = @as(f32, @floatFromInt(msg.data.note_on.velocity)) / 127 * volume_scale;
                     }
                 } else if (!off and msg.data.note_on.velocity > 0) {
                     if (channel_voices.count == channel_voices.available_voices.len) {
@@ -411,23 +382,23 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
                     } else {
                         std.log.debug("!!!! adding note={s}", .{@tagName(note)});
                         channel_voices.addAssumeCapacity(note, msg.data.note_on.velocity, .{
-                            .generator = .{ .unit_generator = Render2.singlestep.SawTrigUnitGenerator.initFreq(bendFreq(audio.midi.defaultFreq[@enumToInt(note)], channel_voices.bend_value)) },
-                            //.generator = Render2.singlestep.SineGenerator.initFreq(audio.midi.defaultFreq[@enumToInt(note)]),
+                            .generator = .{ .unit_generator = Render2.singlestep.SawTrigUnitGenerator.initFreq(bendFreq(audio.midi.defaultFreq[@intFromEnum(note)], channel_voices.bend_value)) },
+                            //.generator = Render2.singlestep.SineGenerator.initFreq(audio.midi.defaultFreq[@intFromEnum(note)]),
                             .filters = .{
                                 //.{ },
-                                .{},//.{ .feedforward_gain = 0.2, .feedback_gain = 0.7 },
-                                .{ .volume =  @intToFloat(f32, msg.data.note_on.velocity) / 127 * volume_scale },
+                                .{}, //.{ .feedforward_gain = 0.2, .feedback_gain = 0.7 },
+                                .{ .volume = @as(f32, @floatFromInt(msg.data.note_on.velocity)) / 127 * volume_scale },
                             },
                         });
                         for (known_ccs) |known_cc| {
-                            channel_voices.available_voices[channel_voices.count-1].updateCC(known_cc, channel_voices.cc_velocities[known_cc]);
+                            channel_voices.available_voices[channel_voices.count - 1].updateCC(known_cc, channel_voices.cc_velocities[known_cc]);
                         }
                     }
                 }
             }
 
             //if (off or msg.data.note_on.velocity == 0) {
-            //    if (@enumToInt(global_temp_midi_render2_instrument.note) == msg.data.note_off.note) {
+            //    if (@intFromEnum(global_temp_midi_render2_instrument.note) == msg.data.note_off.note) {
             //        global_temp_midi_render2_instrument.renderer.volume = 0;
             //    }
             //} else {
@@ -445,13 +416,13 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
             //const bend_ratio = getBendRatio(bend_value);
             //const bend_distance = 28; // I think the Seaboard rise assumes this to be 24?
             for (channel_voices.getCurrentVoices()) |*voice| {
-                const note_freq = audio.midi.defaultFreq[@enumToInt(voice.note)];
+                const note_freq = audio.midi.defaultFreq[@intFromEnum(voice.note)];
                 //if (bend_ratio >= 1.0) {
-                //    const next_freq = audio.midi.defaultFreq[@enumToInt(voice.note)+bend_distance];
+                //    const next_freq = audio.midi.defaultFreq[@intFromEnum(voice.note)+bend_distance];
                 //    const diff = next_freq - note_freq;
                 //    voice.renderer.generator.setFreq(note_freq + (diff * (bend_ratio-1)));
                 //} else {
-                //    const prev_freq = audio.midi.defaultFreq[@enumToInt(voice.note)-bend_distance];
+                //    const prev_freq = audio.midi.defaultFreq[@intFromEnum(voice.note)-bend_distance];
                 //    const diff = note_freq - prev_freq;
                 //    voice.renderer.generator.setFreq(prev_freq + (diff * bend_ratio));
                 //}
@@ -463,9 +434,8 @@ pub fn applyMidiToGlobalInstrument(msg: audio.midi.MidiMsg) void {
         .channel_pressure => {
             const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
             for (channel_voices.getCurrentVoices()) |*voice| {
-                voice.renderer.filters[volume_filter_index].volume = @intToFloat(f32, msg.data.channel_pressure.pressure) / 127 * volume_scale;
+                voice.renderer.filters[volume_filter_index].volume = @as(f32, @floatFromInt(msg.data.channel_pressure.pressure)) / 127 * volume_scale;
             }
-
         },
         .control_change => {
             const channel_voices = &global_temp_midi_channel_voices[msg.status_arg];
@@ -487,7 +457,7 @@ fn bendFreq(freq: f32, bend_value: u14) f32 {
 fn getPitchBendRatio(bend_value: u14) f32 {
     const pitch_bend_dist = 4096 * 12; // normal?
     //const pitch_bend_dist = 4096 / 2; // seaboard?
-    return std.math.pow(f32, 2.0, @intToFloat(f32, @intCast(i15, bend_value) - 8192) / pitch_bend_dist);
+    return std.math.pow(f32, 2.0, @as(f32, @floatFromInt(@as(i15, bend_value) - 8192)) / pitch_bend_dist);
 }
 
 //    0 maps to 0
@@ -498,9 +468,7 @@ fn getPitchBendRatio(bend_value: u14) f32 {
 // 16382 maps to (1 + 8190/8191) (about 0.99988)
 // 16383 maps to 2
 fn getBendRatio(bend_value: u14) f32 {
-    return
-        if (bend_value >= 8192) 1.0 + (@intToFloat(f32, bend_value - 8192) / 8191.0)
-        else @intToFloat(f32, bend_value) / 8192.0;
+    return if (bend_value >= 8192) 1.0 + (@as(f32, bend_value - 8192) / 8191.0) else @as(f32, bend_value) / 8192.0;
 }
 
 pub fn addToEachChannel(channels: []u8, buffer: [*]SamplePoint, value: SamplePoint) void {

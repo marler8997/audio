@@ -2,17 +2,14 @@ const builtin = @import("builtin");
 const std = @import("std");
 const inputlog = std.log.scoped(.input);
 
-const win32 = struct {
-    usingnamespace @import("win32").ui.input.keyboard_and_mouse;
-};
+const win32 = @import("win32").everything;
 
 const audio = @import("../audio.zig");
 
-
 const global = struct {
-    var inputThreadMutex = std.Thread.Mutex {};
+    var inputThreadMutex = std.Thread.Mutex{};
     var inputThreadRunning = false;
-    var inputThread : std.Thread = undefined;
+    var inputThread: std.Thread = undefined;
     //KeyHandler!void[256] keyHandlers;
 };
 
@@ -188,14 +185,13 @@ pub fn startInputThread() !void {
     global.inputThreadMutex.lock();
     defer global.inputThreadMutex.unlock();
 
-    if (!global.inputThreadRunning)
-    {
+    if (!global.inputThreadRunning) {
         global.inputThread = try std.Thread.spawn(.{}, inputThreadEntry, .{{}});
         global.inputThreadRunning = true;
     }
 }
 pub fn joinInputThread() void {
-    var inputThreadCached : std.Thread = undefined;
+    var inputThreadCached: std.Thread = undefined;
     {
         global.inputThreadMutex.lock();
         defer global.inputThreadMutex.unlock();
@@ -220,8 +216,7 @@ fn inputThread2() !void {
     var mode = try audio.osinput.ConsoleMode.setup();
     defer mode.restore();
 
-    inputLoop: while(true)
-    {
+    inputLoop: while (true) {
         var inputEvents = audio.osinput.InputEvents(128).init();
         for (try inputEvents.read()) |*inputEvent| {
             if (inputEvent.isKeyEvent()) |keyEvent| {
@@ -229,7 +224,7 @@ fn inputThread2() !void {
                 //const down = keyEvent.getKeyDown();
                 //logDebug("KEY_EVENT code={} {}", code, if (down) "down" else "up");
 
-                if (code == @enumToInt(win32.VK_ESCAPE)) {
+                if (code == @intFromEnum(win32.VK_ESCAPE)) {
                     inputlog.info("ESC key pressed", .{});
                     break :inputLoop;
                 }
@@ -238,24 +233,24 @@ fn inputThread2() !void {
                 //    log("CTL-C pressed");
                 //    break :inputLoop;
                 //}
-            //    if (code > global.keyHandlers.length)
-            //    {
-            //        // log something?
-            //    }
-            //    else
-            //    {
-            //        enterGlobalCriticalSection();
-            //        scope (exit) exitGlobalCriticalSection();
-            //        if (global.keyHandlers[code].isSet)
-            //        {
-            //            global.keyHandlers[code].call(&inputBuffer[i].key);
-            //        }
-            //        else
-            //        {
-            //            //logDebug("keycode ", code, " has no handler");
-            //        }
-            //    }
-//
+                //    if (code > global.keyHandlers.length)
+                //    {
+                //        // log something?
+                //    }
+                //    else
+                //    {
+                //        enterGlobalCriticalSection();
+                //        scope (exit) exitGlobalCriticalSection();
+                //        if (global.keyHandlers[code].isSet)
+                //        {
+                //            global.keyHandlers[code].call(&inputBuffer[i].key);
+                //        }
+                //        else
+                //        {
+                //            //logDebug("keycode ", code, " has no handler");
+                //        }
+                //    }
+                //
             } else {
                 inputlog.debug("unhandled event type: {}", .{inputEvent.getEventType()});
             }

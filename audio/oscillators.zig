@@ -7,18 +7,18 @@ const OutputNode = audio.dag.OutputNode;
 const AudioGenerator = audio.dag.AudioGenerator;
 
 fn sawFrequencyToIncrement(frequency: f32) f32 {
-    return frequency / @intToFloat(f32, audio.global.sampleFramesPerSec);
+    return frequency / @as(f32, @floatFromInt(audio.global.sampleFramesPerSec));
 }
 
 pub const SawGenerator = struct {
     generator: AudioGenerator,
     //frequency : f32,
-    volume : f32,
-    nextSamplePoint : f32,
-    increment : f32,
+    volume: f32,
+    nextSamplePoint: f32,
+    increment: f32,
     pub fn init(frequency: f32, volume: f32) SawGenerator {
-        return SawGenerator {
-            .generator = AudioGenerator {
+        return SawGenerator{
+            .generator = AudioGenerator{
                 .mix = mix,
                 .connectOutputNode = connectOutputNode,
                 .disconnectOutputNode = disconnectOutputNode,
@@ -40,11 +40,10 @@ pub const SawGenerator = struct {
         _ = outputNode;
     }
     fn mix(base: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void {
-        var self = @fieldParentPtr(SawGenerator, "generator", base);
+        var self: *SawGenerator = @fieldParentPtr("generator", base);
         var buffer = bufferStart;
-        while(stdext.limitarray.ptrLessThan(buffer, bufferLimit)) : (buffer += channels.len) {
-            const samplePoint = RenderFormat.f32ToSamplePoint(
-                self.volume * RenderFormat.MaxAmplitudeF32 * self.nextSamplePoint * 0.5);
+        while (stdext.limitarray.ptrLessThan(buffer, bufferLimit)) : (buffer += channels.len) {
+            const samplePoint = RenderFormat.f32ToSamplePoint(self.volume * RenderFormat.MaxAmplitudeF32 * self.nextSamplePoint * 0.5);
             audio.render.addToEachChannel(channels, buffer, samplePoint);
             self.nextSamplePoint += self.increment;
             if (self.nextSamplePoint >= 0.99)

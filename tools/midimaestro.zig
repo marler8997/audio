@@ -121,10 +121,10 @@ pub fn main() !u8 {
                             song_state.next = 0;
                         }
 
-                        if (note_on_table[@enumToInt(note.note)].input_note_owner) |_| {
+                        if (note_on_table[@intFromEnum(note.note)].input_note_owner) |_| {
                             // we need to turn it off before turning it back on
                             sendNoteOff(midi_port, process_result.msg.status_arg, note.note, 0);
-                            note_on_table[@enumToInt(note.note)].input_note_owner = null;
+                            note_on_table[@intFromEnum(note.note)].input_note_owner = null;
                         }
 
                         std.log.info("next={} changed note {} to {}", .{song_state.next, @intToEnum(MidiNote, process_result.msg.data.note_on.note), note.note});
@@ -134,7 +134,7 @@ pub fn main() !u8 {
                             .status_arg = process_result.msg.status_arg, // channel
                             .msb_status = 1, // control byte
                             .data = .{ .note_on = .{
-                                .note = @enumToInt(note.note),
+                                .note = @intFromEnum(note.note),
                                 .msb_note = 0,
                                 .velocity = process_result.msg.data.note_on.velocity,
                                 .msb_velocity = 0,
@@ -145,7 +145,7 @@ pub fn main() !u8 {
                             std.log.err("failed to send note on MIDI message, result={}, error={}", .{send_result, win32.GetLastError()});
                             return 0xff;
                         }
-                        note_on_table[@enumToInt(note.note)].input_note_owner = @intToEnum(MidiNote, process_result.msg.data.note_on.note);
+                        note_on_table[@intFromEnum(note.note)].input_note_owner = @intToEnum(MidiNote, process_result.msg.data.note_on.note);
                         if (!note.attached) break;
                     }
                 },
@@ -154,11 +154,11 @@ pub fn main() !u8 {
                         var song_note_index = song_note_index_const;
                         while (true) : (song_note_index += 1) {
                             const note = song_state.notes[song_note_index];
-                            if (note_on_table[@enumToInt(note.note)].input_note_owner) |input_note_owner| {
+                            if (note_on_table[@intFromEnum(note.note)].input_note_owner) |input_note_owner| {
                                 if (input_note_owner == @intToEnum(MidiNote, process_result.msg.data.note_off.note)) {
                                     std.log.info("changed note off from {} to {}", .{@intToEnum(MidiNote, process_result.msg.data.note_off.note), note.note});
                                     sendNoteOff(midi_port, process_result.msg.status_arg, note.note, process_result.msg.data.note_off.velocity);
-                                    note_on_table[@enumToInt(note.note)].input_note_owner = null;
+                                    note_on_table[@intFromEnum(note.note)].input_note_owner = null;
                                 } else {
                                     std.log.info("note {} lost ownership of {} to {}", .{@intToEnum(MidiNote, process_result.msg.data.note_off.note), note.note, input_note_owner});
                                 }
@@ -203,7 +203,7 @@ fn sendNoteOff(midi_port: *tevirtualmidi.VM_MIDI_PORT, channel: u4, note: MidiNo
         .status_arg = channel, // channel
         .msb_status = 1, // control byte
         .data = .{ .note_off = .{
-            .note = @enumToInt(note),
+            .note = @intFromEnum(note),
             .msb_note = 0,
             .velocity = velocity,
             .msb_velocity = 0,

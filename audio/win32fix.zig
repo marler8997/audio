@@ -1,9 +1,4 @@
-const win32 = struct {
-    usingnamespace @import("win32");
-    usingnamespace @import("win32").foundation;
-    usingnamespace @import("win32").system.system_services;
-    usingnamespace @import("win32").media.audio;
-};
+const win32 = @import("win32").everything;
 
 // This type is not generated in zigwin32 yet because it uses a nested type
 pub const KEY_EVENT_RECORD = extern struct {
@@ -30,14 +25,14 @@ pub const INPUT_RECORD = extern struct {
 };
 
 // This type is not generated in zigwin32 yet because it uses a nested type
-pub const WAVEFORMATEXTENSIBLE  = extern struct {
-    Format : win32.WAVEFORMATEX,
+pub const WAVEFORMATEXTENSIBLE = extern struct {
+    Format: win32.WAVEFORMATEX,
     //Samples : extern union {
     //    wValidBitsPerSample : u16,
     //    wSamplesPerBlock : u16,
     //    wReserved : u16,
     //},
-    wValidBitsPerSample : u16, // TODO: use the actual union
-    dwChannelMask : u32,
-    SubFormat : win32.zig.Guid,
+    wValidBitsPerSample: u16, // TODO: use the actual union
+    dwChannelMask: u32,
+    SubFormat: win32.zig.Guid,
 };

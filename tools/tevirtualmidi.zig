@@ -6,20 +6,20 @@ const BOOL = i32;
 //const te_virtual_lib = if (builtin.cpu.arch.ptrBitWidth() == 64) "teVirtualMIDI64" else "teVirtualMIDI32";
 
 pub const TE_VM_LOGGING_MISC = 0x01;
-pub const TE_VM_LOGGING_RX    = 0x02;
+pub const TE_VM_LOGGING_RX = 0x02;
 pub const TE_VM_LOGGING_TX = 0x04;
 pub const TE_VM_DEFAULT_BUFFER_SIZE = 0x1fffe;
 
-pub const TE_VM_FLAGS_PARSE_RX            = 0x01;
-pub const TE_VM_FLAGS_PARSE_TX            = 0x02;
+pub const TE_VM_FLAGS_PARSE_RX = 0x01;
+pub const TE_VM_FLAGS_PARSE_TX = 0x02;
 pub const TE_VM_FLAGS_INSTANTIATE_RX_ONLY = 0x04;
 pub const TE_VM_FLAGS_INSTANTIATE_TX_ONLY = 0x08;
-pub const TE_VM_FLAGS_INSTANTIATE_BOTH    = TE_VM_FLAGS_INSTANTIATE_TX_ONLY | TE_VM_FLAGS_INSTANTIATE_RX_ONLY;
-pub const TE_VM_FLAGS_SUPPORTED           = TE_VM_FLAGS_PARSE_RX | TE_VM_FLAGS_PARSE_TX | TE_VM_FLAGS_INSTANTIATE_RX_ONLY | TE_VM_FLAGS_INSTANTIATE_TX_ONLY;
+pub const TE_VM_FLAGS_INSTANTIATE_BOTH = TE_VM_FLAGS_INSTANTIATE_TX_ONLY | TE_VM_FLAGS_INSTANTIATE_RX_ONLY;
+pub const TE_VM_FLAGS_SUPPORTED = TE_VM_FLAGS_PARSE_RX | TE_VM_FLAGS_PARSE_TX | TE_VM_FLAGS_INSTANTIATE_RX_ONLY | TE_VM_FLAGS_INSTANTIATE_TX_ONLY;
 
-pub const VM_MIDI_PORT = opaque{};
+pub const VM_MIDI_PORT = opaque {};
 
-pub const VM_MIDI_DATA_CB = fn(
+pub const VM_MIDI_DATA_CB = *const fn (
     midi_port: *VM_MIDI_PORT,
     data: [*]u8,
     len: u32,

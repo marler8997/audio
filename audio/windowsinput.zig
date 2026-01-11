@@ -1,51 +1,45 @@
 const std = @import("std");
 const inputlog = std.log.scoped(.input);
 
-const win32 = struct {
-    usingnamespace @import("win32").foundation;
-    usingnamespace @import("win32").system.diagnostics.debug;
-    usingnamespace @import("win32").system.console;
-    usingnamespace @import("win32").ui.windows_and_messaging;
-    usingnamespace @import("win32").ui.input.keyboard_and_mouse;
-};
+const win32 = @import("win32").everything;
 const win32fix = @import("win32fix.zig");
 
 const audio = @import("../audio.zig");
-
 
 pub const KEY_ESCAPE = win32.VK_ESCAPE;
 
 pub const ConsoleMode = struct {
     oldValue: win32.CONSOLE_MODE,
     pub fn setup() !ConsoleMode {
-        var stdin = std.io.getStdIn();
+        const stdin = std.fs.File.stdin();
 
-        var mode : ConsoleMode = undefined;
-        if(0 == win32.GetConsoleMode(stdin.handle, &mode.oldValue))
-        {
-            inputlog.err("Error: GetConsoleMode failed, e={}", .{win32.GetLastError()});
+        var mode: ConsoleMode = undefined;
+        if (0 == win32.GetConsoleMode(stdin.handle, &mode.oldValue)) {
+            inputlog.err("Error: GetConsoleMode failed, e={f}", .{win32.GetLastError()});
             return error.Unexpected;
         }
         var newMode = mode.oldValue;
-        // workaround error: unable to perform binary not operation on type 'comptime_int'
-        const flagsToDisable : u32 =
-            @enumToInt(win32.ENABLE_ECHO_INPUT)       // disable echo
-            | @enumToInt(win32.ENABLE_LINE_INPUT)       // disable line input, we want characters immediately
-            | @enumToInt(win32.ENABLE_PROCESSED_INPUT); // we'll handle CTL-C so we can cleanup and reset the console mode
-        newMode = @intToEnum(win32.CONSOLE_MODE, @enumToInt(newMode) & ~flagsToDisable);
-        inputlog.info("Current console mode 0x{x}, setting to 0x{x}", .{mode.oldValue, newMode});
+        const flags_to_disable: win32.CONSOLE_MODE = .{
+            .ENABLE_ECHO_INPUT = 1, // disable echo
+            .ENABLE_LINE_INPUT = 1, // disable line input, we want characters immediately
+            .ENABLE_PROCESSED_INPUT = 1, // we'll handle CTL-C so we can cleanup and reset the console mode
+        };
+        newMode = @bitCast(@as(u32, @bitCast(newMode)) & ~@as(u32, @bitCast(flags_to_disable)));
+        inputlog.info("Current console mode 0x{x}, setting to 0x{x}", .{
+            @as(u32, @bitCast(mode.oldValue)),
+            @as(u32, @bitCast(newMode)),
+        });
 
-        if(0 == win32.SetConsoleMode(stdin.handle, newMode))
-        {
-            inputlog.err("Error: SetConsoleMode failed, e={}", .{win32.GetLastError()});
+        if (0 == win32.SetConsoleMode(stdin.handle, newMode)) {
+            inputlog.err("Error: SetConsoleMode failed, error={f}", .{win32.GetLastError()});
             return error.Unexpected;
         }
         return mode;
     }
     pub fn restore(self: *ConsoleMode) void {
-        var stdin = std.io.getStdIn();
+        const stdin = std.fs.File.stdin();
         if (0 == win32.SetConsoleMode(stdin.handle, self.oldValue)) {
-            inputlog.err("SetConsoleMode failed, e={}", .{win32.GetLastError()});
+            inputlog.err("SetConsoleMode failed, error={f}", .{win32.GetLastError()});
             //return error.Unexpected;
         }
     }
@@ -56,21 +50,19 @@ pub fn InputEvents(comptime maxSize: comptime_int) type {
         // align(@typeInfo([*]win32fix.INPUT_RECORD).Pointer.alignment)
         buffer: [maxSize]InputEvent,
         pub fn init() @This() {
-            return @This() {
+            return @This(){
                 .buffer = undefined,
             };
         }
         pub fn read(self: *@This()) ![]InputEvent {
-            var stdin = std.io.getStdIn();
-            var inputCount : u32 = undefined;
-            if(0 == win32.ReadConsoleInputA(
-                stdin.handle, @ptrCast([*]win32.INPUT_RECORD, &self.buffer[0]), maxSize, &inputCount))
-            {
-                inputlog.err("Error: ReadConsoleInput failed, e={}", .{win32.GetLastError()});
+            const stdin = std.fs.File.stdin();
+            var inputCount: u32 = undefined;
+            if (0 == win32.ReadConsoleInputA(stdin.handle, @ptrCast(&self.buffer[0]), maxSize, &inputCount)) {
+                inputlog.err("Error: ReadConsoleInput failed, error={f}", .{win32.GetLastError()});
                 return error.Unexpected;
             }
             inputlog.debug("got {} input events!", .{inputCount});
-            return self.buffer[0 .. inputCount];
+            return self.buffer[0..inputCount];
         }
     };
 }
@@ -80,15 +72,17 @@ comptime {
     std.debug.assert(@sizeOf(InputEvent.KeyEvent) == @sizeOf(win32fix.INPUT_RECORD));
 }
 const InputEvent = extern union {
-    Record: win32fix.INPUT_RECORD,
-    KeyEvent : KeyEvent,
+    record: win32fix.INPUT_RECORD,
+    key_event: KeyEvent,
 
     pub fn getEventType(self: *const InputEvent) u32 {
-        return self.Record.EventType;
+        return self.record.EventType;
     }
     pub fn isKeyEvent(self: *InputEvent) ?KeyEvent {
-        return if (self.Record.EventType == win32.KEY_EVENT)
-            self.KeyEvent else null;
+        return if (self.record.EventType == win32.KEY_EVENT)
+            self.key_event
+        else
+            null;
     }
     pub const KeyEvent = extern struct {
         Record: win32fix.INPUT_RECORD,

@@ -3,7 +3,6 @@ const std = @import("std");
 
 const audio = @import("./audio.zig");
 
-
 //import mar.from;
 //import mar.passfail;
 //
@@ -26,7 +25,7 @@ fn main2() !void {
 
     // This should always be done first thing
     //from!"audio.timer".timerInit().enforce();
-    try audio.render.init();
+    //try audio.render.init();
     //from!"audio.pckeyboard".pckeyboardInit().enforce();
 
     try setupGlobalDefaults();
@@ -42,7 +41,7 @@ fn setupGlobalDefaults() anyerror!void {
     audio.global.channelCount = 2;
     //audio.global.sampleFramesPerSec = 44100;
     audio.global.sampleFramesPerSec = 48000;
-    std.log.info("default set to {} channels at {} Hz", .{audio.global.channelCount, audio.global.sampleFramesPerSec});
+    std.log.info("default set to {} channels at {} Hz", .{ audio.global.channelCount, audio.global.sampleFramesPerSec });
 
     audio.global.bufferSampleFrameCount = 0; // set to 0 to mean it's not set yet
 
@@ -55,9 +54,7 @@ fn setupGlobalDefaults() anyerror!void {
 }
 /// After backend has been setup, finishing setting globals if backend did not set them
 fn finishGlobals() anyerror!void {
-
-    if (audio.global.bufferSampleFrameCount != 0)
-    {
+    if (audio.global.bufferSampleFrameCount != 0) {
         std.log.info("audio backend set a buffer size for us to {}", .{audio.global.bufferSampleFrameCount});
         return;
     }
@@ -70,8 +67,8 @@ fn finishGlobals() anyerror!void {
     const inputDelayMillis = 50;
     //const inputDelayMillis = 100;
     audio.global.bufferSampleFrameCount = audio.global.sampleFramesPerSec * inputDelayMillis / 1000;
-    const inputDelayMillisU32 : u32 = inputDelayMillis; // workaround issue 557
-    std.log.info("bufferSampleFrameCount={} inputDelay={} ms", .{audio.global.bufferSampleFrameCount, inputDelayMillisU32});
+    const inputDelayMillisU32: u32 = inputDelayMillis; // workaround issue 557
+    std.log.info("bufferSampleFrameCount={} inputDelay={} ms", .{ audio.global.bufferSampleFrameCount, inputDelayMillisU32 });
 }
 //
 //
@@ -88,96 +85,95 @@ const SawWave = false;
 //
 
 fn go() !void {
-//    import mar.arraybuilder;
-//    import audio.dag;
-//
-//    // Load project file
-//    {
-//        //import mar.json;
-//
-//    }
-//
+    //    import mar.arraybuilder;
+    //    import audio.dag;
+    //
+    //    // Load project file
+    //    {
+    //        //import mar.json;
+    //
+    //    }
+    //
 
-    var sawGenerator : audio.oscillators.SawGenerator = undefined;
+    var sawGenerator: audio.oscillators.SawGenerator = undefined;
     if (SingleSawTone) {
-        sawGenerator = audio.oscillators.SawGenerator.init(
-            audio.midi.getStdFreq(audio.midi.MidiNote.g4), 0.1);
+        sawGenerator = audio.oscillators.SawGenerator.init(audio.midi.getStdFreq(audio.midi.MidiNote.g4), 0.1);
         try audio.render.addRootAudioGenerator(&sawGenerator.generator);
     }
 
-    var instruments = std.ArrayList(*audio.dag.MidiInstrument).init(audio.global.allocator);
-//    version (SinWave)
-//    {
-//        auto sinWave = SinOscillatorMidiInstrument();
-//        sinWave.initialize(OscillatorInstrumentData(.4));
-//        instruments.tryPut(sinWave.asBase).enforce();
-//    }
-    var sawWave : *audio.dag.MidiInstrument = undefined;
+    var instruments: std.ArrayList(*audio.dag.MidiInstrument) = .{};
+    //    version (SinWave)
+    //    {
+    //        auto sinWave = SinOscillatorMidiInstrument();
+    //        sinWave.initialize(OscillatorInstrumentData(.4));
+    //        instruments.tryPut(sinWave.asBase).enforce();
+    //    }
+    var sawWave: *audio.dag.MidiInstrument = undefined;
     if (SawWave) {
         sawWave = try audio.dag.createSawMidiInstrument(audio.global.allocator);
-            //audio.dag.SawOscillatorMidiInstrument.init(OscillatorInstrumentData(0.1));
+        //audio.dag.SawOscillatorMidiInstrument.init(OscillatorInstrumentData(0.1));
         try instruments.append(sawWave);
     }
-//    version (GrandPiano)
-//    {
-//        SamplerMidiInstrument grandPiano;
-//        if (loadGrandPiano(&grandPiano, 3.0).failed)
-//            return 1; // fail
-//        instruments.tryPut(grandPiano.asBase).enforce();
-//    }
-//
-//    version (ValhallaReverb)
-//    {
-//        auto valhallaEffect = tryLoadValhalla();
-//        if (valhallaEffect is null)
-//        {
-//            logError("failed to load valhalla plugin");
-//            return 1; // fail
-//        }
-//        auto valhallaEffectNode = from!"audio.vstnodes".VstEffect();
-//        valhallaEffectNode.initialize(valhallaEffect);
-//        foreach (instrument; instruments.data)
-//        {
-//            valhallaEffectNode.inputs.tryPut(instrument.asBase).enforce();
-//        }
-//        addRootAudioGenerator(valhallaEffectNode.asBase).enforce();
-//    }
-//    else
-//    {
-//        foreach (instrument; instruments.data)
-//        {
-//            addRootAudioGenerator(instrument.asBase).enforce();
-//        }
-//    }
-//
-//    version (UsePCKeyboard)
-//    {
-//        auto pcKeyboardInput = from!"audio.pckeyboard".PCKeyboardInputNode();
-//        pcKeyboardInput.initialize();
-//        foreach (i; 0 .. instruments.length)
-//        {
-//            instruments[i].tryAddInputNode(pcKeyboardInput.asBase)
-//                .enforce("failed to add pc keyboard midi input mode");
-//        }
-//        pcKeyboardInput.startMidiDeviceInput().enforce();
-//        version (PCKeyboardStartWithC4)
-//        {
-//            import audio.midi : MidiEvent, MidiNote;
-//            const addEventResult = pcKeyboardInput.tryAddMidiEvent(MidiEvent.makeNoteOn(0, MidiNote.c4, 67));
-//            if (addEventResult.failed)
-//            {
-//                logError("failed to add MIDI ON event: ", addEventResult);
-//                return 1; // fail
-//            }
-//        }
-//    }
+    //    version (GrandPiano)
+    //    {
+    //        SamplerMidiInstrument grandPiano;
+    //        if (loadGrandPiano(&grandPiano, 3.0).failed)
+    //            return 1; // fail
+    //        instruments.tryPut(grandPiano.asBase).enforce();
+    //    }
+    //
+    //    version (ValhallaReverb)
+    //    {
+    //        auto valhallaEffect = tryLoadValhalla();
+    //        if (valhallaEffect is null)
+    //        {
+    //            logError("failed to load valhalla plugin");
+    //            return 1; // fail
+    //        }
+    //        auto valhallaEffectNode = from!"audio.vstnodes".VstEffect();
+    //        valhallaEffectNode.initialize(valhallaEffect);
+    //        foreach (instrument; instruments.data)
+    //        {
+    //            valhallaEffectNode.inputs.tryPut(instrument.asBase).enforce();
+    //        }
+    //        addRootAudioGenerator(valhallaEffectNode.asBase).enforce();
+    //    }
+    //    else
+    //    {
+    //        foreach (instrument; instruments.data)
+    //        {
+    //            addRootAudioGenerator(instrument.asBase).enforce();
+    //        }
+    //    }
+    //
+    //    version (UsePCKeyboard)
+    //    {
+    //        auto pcKeyboardInput = from!"audio.pckeyboard".PCKeyboardInputNode();
+    //        pcKeyboardInput.initialize();
+    //        foreach (i; 0 .. instruments.length)
+    //        {
+    //            instruments[i].tryAddInputNode(pcKeyboardInput.asBase)
+    //                .enforce("failed to add pc keyboard midi input mode");
+    //        }
+    //        pcKeyboardInput.startMidiDeviceInput().enforce();
+    //        version (PCKeyboardStartWithC4)
+    //        {
+    //            import audio.midi : MidiEvent, MidiNote;
+    //            const addEventResult = pcKeyboardInput.tryAddMidiEvent(MidiEvent.makeNoteOn(0, MidiNote.c4, 67));
+    //            if (addEventResult.failed)
+    //            {
+    //                logError("failed to add MIDI ON event: ", addEventResult);
+    //                return 1; // fail
+    //            }
+    //        }
+    //    }
 
     var midi_reader: audio.midi.MidiReader = undefined;
     if (UseMidiInstrument) {
         midi_reader = audio.midi.MidiReader.init(audio.render.addMidiEvent);
         //for (instruments.items) |instrument| {
         //    try instrument.addInputNode(midiInputDevice.asMidiGeneratorNode());
-//      //          .enforce("failed to add midi device input node");
+        //      //          .enforce("failed to add midi device input node");
         //}
         // just hardcode MIDI device 0 for now
         try midi_reader.start(0);
@@ -187,18 +183,17 @@ fn go() !void {
     const renderThread = try std.Thread.spawn(.{}, audio.render.renderThreadEntry, .{{}});
     _ = renderThread;
 
-
-//    {
-//        import mar.thread;
-//        import audio.render : renderThread;
-//        const result = startThread(&renderThread);
-//        if (result.failed)
-//        {
-//            logError("failed to start audio thread: ", result);
-//            return 1; // fail
-//        }
-//    }
-//
+    //    {
+    //        import mar.thread;
+    //        import audio.render : renderThread;
+    //        const result = startThread(&renderThread);
+    //        if (result.failed)
+    //        {
+    //            logError("failed to start audio thread: ", result);
+    //            return 1; // fail
+    //        }
+    //    }
+    //
     try audio.pckeyboard.startInputThread();
     std.log.info("Press ESC to quit", .{});
     audio.pckeyboard.joinInputThread();

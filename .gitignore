@@ -1,4 +1,2 @@
-out/
-dep/
-zig-cache/
+.zig-cache/
 zig-out/

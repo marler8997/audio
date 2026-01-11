@@ -6,27 +6,24 @@ const audio = @import("../audio.zig");
 const midi = audio.midi;
 const SamplePoint = audio.renderformat.SamplePoint;
 
-
-pub const OutputNode = struct {
-};
+pub const OutputNode = struct {};
 
 pub const AudioGenerator = struct {
     // Some generators may need to know how many output nodes are connected
-    connectOutputNode: fn(self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
+    connectOutputNode: *const fn (self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
     // Some generators may need to know how many output nodes are connected
-    disconnectOutputNode: fn(self: *AudioGenerator, ouptutNode: *OutputNode) anyerror!void,
+    disconnectOutputNode: *const fn (self: *AudioGenerator, ouptutNode: *OutputNode) anyerror!void,
 
-    mix : fn(self: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void,
+    mix: *const fn (self: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void,
     // This let's the audio generator that is can clean up any state for this frame.
     // This function must be called after each buffer is done being rendered.
     // This function may be called more than once before the next mix/set call.
-    renderFinished: fn(self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
+    renderFinished: *const fn (self: *AudioGenerator, outputNode: *OutputNode) anyerror!void,
 };
 
 //// A node that inputs midi notes
 //struct MidiInstrument(T)
 pub const MidiInstrument = struct {
-
     audioGenerator: AudioGenerator,
     inputNodes: std.ArrayList(*MidiGenerator),
 
@@ -48,15 +45,14 @@ pub const MidiGenerator = struct {
     // going to request events from them.
     //void function(T* context, void* instrument) connectInstrument;
 
-    //getMidiEvents: fn(self: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent,
+    //getMidiEvents: *const fn(self: *MidiGenerator, instrument: *MidiInstrument) []MidiEvent,
 
     // This let's the midi input node that it can now clean up all it's events.
     // This function must be called after each buffer is done being rendered.
-    renderFinished: fn(self: *MidiGenerator, instrument: *MidiInstrument) void,
+    renderFinished: *const fn (self: *MidiGenerator, instrument: *MidiInstrument) void,
 };
 
-pub const MidiGeneratorTypeAImpl = struct {
-};
+pub const MidiGeneratorTypeAImpl = struct {};
 
 //struct MidiGeneratorTemplate(InputDevice)
 //pub const MidiGeneratorTypeA = struct {
@@ -211,9 +207,9 @@ pub const MidiGeneratorTypeAImpl = struct {
 //}
 
 const MidiInstrumentTypeAImpl = struct {
-    newNote: fn(self: *MidiInstrumentTypeAImpl) void,//, event: *MidiEvent, state: *NoteState) void,
-    reattackNote: fn(self: *MidiInstrumentTypeAImpl) void,
-    renderNote: fn(self: *MidiInstrumentTypeAImpl) void,
+    newNote: *const fn (self: *MidiInstrumentTypeAImpl) void, //, event: *MidiEvent, state: *NoteState) void,
+    reattackNote: *const fn (self: *MidiInstrumentTypeAImpl) void,
+    renderNote: *const fn (self: *MidiInstrumentTypeAImpl) void,
 };
 
 pub fn createSawMidiInstrument(allocator: *std.mem.Allocator) !*MidiInstrument {
@@ -238,8 +234,8 @@ const SawOscillatorMidiInstrumentTypeA = struct {
 
     //alias InstrumentData = OscillatorInstrumentData;
     pub fn init() @This() {
-        return @This() {
-            .midiInstrumentTypeAImpl = MidiInstrumentTypeAImpl {
+        return @This(){
+            .midiInstrumentTypeAImpl = MidiInstrumentTypeAImpl{
                 .newNote = newNote,
                 .reattackNote = reattackNote,
                 .renderNote = renderNote,
@@ -254,7 +250,7 @@ const SawOscillatorMidiInstrumentTypeA = struct {
     //    float nextSamplePoint;
     //    float increment;
     //}
-    fn newNote(base: *MidiInstrumentTypeAImpl) void {//, event: *MidiEvent) void {
+    fn newNote(base: *MidiInstrumentTypeAImpl) void { //, event: *MidiEvent) void {
         _ = base;
         //const self = @fieldParentPtr(SawOscillatorMidiInstrumentTypeA, "midiInstrumentTypeAImpl", base);
         //self.next_sample_point = 0;
@@ -265,11 +261,15 @@ const SawOscillatorMidiInstrumentTypeA = struct {
     //    state.nextSamplePoint = 0;
     //    state.increment = sawFrequencyToIncrement(defaultFreq[event.noteOn.note]);
     //}
-    fn reattackNote(base: *MidiInstrumentTypeAImpl) void { _ = base; }
+    fn reattackNote(base: *MidiInstrumentTypeAImpl) void {
+        _ = base;
+    }
     //static void reattackNote(ref OscillatorInstrumentData instrument, MidiEvent* event, NoteState* state)
     //{
     //}
-    fn renderNote(base: *MidiInstrumentTypeAImpl) void { _ = base; }
+    fn renderNote(base: *MidiInstrumentTypeAImpl) void {
+        _ = base;
+    }
     //static void renderNote(ref OscillatorInstrumentData instrument, NoteState* state,
     //    ubyte[] channels, SamplePoint* buffer)
     //{
@@ -519,7 +519,6 @@ const SawOscillatorMidiInstrumentTypeA = struct {
 //}
 //
 
-
 //struct MidiInstrumentTypeA(Renderer)
 //const MidiInstrumentTypeA = struct {
 //fn MidiInstrumentTypeA(comptime Renderer: type) type { return struct {
@@ -527,19 +526,19 @@ const SawOscillatorMidiInstrumentTypeA = struct {
 
 const MidiInstrumentTypeA = struct {
 
-//    mixin InheritBaseTemplate!MidiInstrument;
-    midiInstrument : MidiInstrument,
-//
-//    MidiNoteMap!(Renderer.NoteState, ".base.note") notes;
-//    Renderer.InstrumentData instrumentData;
-    sustainPedal : bool,
+    //    mixin InheritBaseTemplate!MidiInstrument;
+    midiInstrument: MidiInstrument,
+    //
+    //    MidiNoteMap!(Renderer.NoteState, ".base.note") notes;
+    //    Renderer.InstrumentData instrumentData;
+    sustainPedal: bool,
     impl: *MidiInstrumentTypeAImpl,
-//
+    //
     //pub fn init(Renderer.InstrumentData instrumentData) void {
     pub fn init(impl: *MidiInstrumentTypeAImpl) MidiInstrumentTypeA {
-        return MidiInstrumentTypeA {
-            .midiInstrument = MidiInstrument {
-                .audioGenerator = AudioGenerator {
+        return MidiInstrumentTypeA{
+            .midiInstrument = MidiInstrument{
+                .audioGenerator = AudioGenerator{
                     .connectOutputNode = connectOutputNode,
                     .disconnectOutputNode = disconnectOutputNode,
                     .renderFinished = renderFinished,
@@ -550,185 +549,191 @@ const MidiInstrumentTypeA = struct {
             .sustainPedal = false,
             .impl = impl,
         };
-//        this.base.base.mix = &mix;
-//        this.base.base.connectOutputNode = &connectOutputNode;
-//        this.base.base.disconnectOutputNode = &disconnectOutputNode;
-//        this.base.base.renderFinished = &renderFinished;
-//
-//        this.notes.initialize();
-//        this.instrumentData = instrumentData;
+        //        this.base.base.mix = &mix;
+        //        this.base.base.connectOutputNode = &connectOutputNode;
+        //        this.base.base.disconnectOutputNode = &disconnectOutputNode;
+        //        this.base.base.renderFinished = &renderFinished;
+        //
+        //        this.notes.initialize();
+        //        this.instrumentData = instrumentData;
     }
-//
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // TODO: this function is probably too large to be in a template
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    fn connectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void { _ = base; _ = outputNode; }
-    fn disconnectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void { _ = base; _ = outputNode; }
+    //
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // TODO: this function is probably too large to be in a template
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    fn connectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void {
+        _ = base;
+        _ = outputNode;
+    }
+    fn disconnectOutputNode(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void {
+        _ = base;
+        _ = outputNode;
+    }
     fn renderFinished(base: *AudioGenerator, outputNode: *OutputNode) anyerror!void {
         _ = base;
         _ = outputNode;
-//        //logDebug(typeof(this).stringof, " renderFinished ", outputNode);
-//        me.asBase.sendInputNodesRenderFinished();
+        //        //logDebug(typeof(this).stringof, " renderFinished ", outputNode);
+        //        me.asBase.sendInputNodesRenderFinished();
     }
     fn mix(base: *AudioGenerator, channels: []u8, bufferStart: [*]SamplePoint, bufferLimit: [*]SamplePoint) anyerror!void {
         _ = base;
         var buffer = bufferStart;
-        var frameIndex : u32 = 0;
-        while (stdext.limitarray.ptrLessThan(buffer, bufferLimit)) : ({buffer += channels.len; frameIndex += 1;}) {
+        var frameIndex: u32 = 0;
+        while (stdext.limitarray.ptrLessThan(buffer, bufferLimit)) : ({
+            buffer += channels.len;
+            frameIndex += 1;
+        }) {}
 
-        }
-
-
-//    private static void mix(typeof(this)* me, ubyte[] channels, SamplePoint* buffer,
-//        const SamplePoint* limit)
-//    {
-//        foreach (i; 0 .. me.base.inputNodes.length)
-//        {
-//            auto events = me.base.inputNodes[i].getMidiEvents(me.base.inputNodes[i], me.asBase);
-//            if (events.length > 0)
-//            handleMidiEvents(me, events);
-//        }
-//        render(me, channels, buffer, limit);
-//    }
-//
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // TODO: this function is probably too large to be in a template
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    private static void handleMidiEvents(typeof(this)* me, MidiEvent[] midiEvents)
-//    {
-//        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//        // TODO: don't ignore timestamps
-//        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//        foreach (event; midiEvents)
-//        {
-//            switch (event.type)
-//            {
-//            case MidiEventType.noteOn:
-//                // check if it is being released
-//                auto state = me.notes.tryGetRef(event.noteOn.note);
-//                if (state !is null)
-//                {
-//                    // TODO: change should be gradual, not immediate
-//                    state.base.targetVolume = (event.noteOn.velocity / 127f) * 1.0;
-//                    state.base.controlState = NoteControlState.pressed;
-//                    Renderer.reattackNote(me.instrumentData, &event, state);
-//                }
-//                else
-//                {
-//                    Renderer.NoteState newNoteState = void;
-//                    newNoteState.base.currentVolume = event.noteOn.velocity / 127.0 * 1.0;
-//                    newNoteState.base.targetVolume = newNoteState.base.currentVolume;
-//                    newNoteState.base.releaseMultiplier = 0.9999;// default value
-//                    newNoteState.base.note = event.noteOn.note;
-//                    newNoteState.base.controlState = NoteControlState.pressed;
-//                    Renderer.newNote(me.instrumentData, &event, &newNoteState);
-//                    me.notes.set(newNoteState);
-//                }
-//                break;
-//            case MidiEventType.noteOff:
-//                auto state = me.notes.tryGetRef(event.noteOff.note);
-//                if (state is null)
-//                {
-//                    logError("note off event for ", event.noteOff.note, " but note is not on? !!!!!!!!!!!!!!");
-//                }
-//                else
-//                {
-//                    if (me.sustainPedal)
-//                    {
-//                        state.base.controlState = NoteControlState.releasedWithSustain;
-//                    }
-//                    else
-//                    {
-//                        state.base.controlState = NoteControlState.releasedNoSustain;
-//                    }
-//                }
-//                break;
-//            case MidiEventType.sustainPedal:
-//                me.sustainPedal = event.sustainPedal;
-//                break;
-//            default:
-//                assert(0, "codebug");
-//            }
-//        }
+        //    private static void mix(typeof(this)* me, ubyte[] channels, SamplePoint* buffer,
+        //        const SamplePoint* limit)
+        //    {
+        //        foreach (i; 0 .. me.base.inputNodes.length)
+        //        {
+        //            auto events = me.base.inputNodes[i].getMidiEvents(me.base.inputNodes[i], me.asBase);
+        //            if (events.length > 0)
+        //            handleMidiEvents(me, events);
+        //        }
+        //        render(me, channels, buffer, limit);
+        //    }
+        //
+        //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //    // TODO: this function is probably too large to be in a template
+        //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //    private static void handleMidiEvents(typeof(this)* me, MidiEvent[] midiEvents)
+        //    {
+        //        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //        // TODO: don't ignore timestamps
+        //        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //        foreach (event; midiEvents)
+        //        {
+        //            switch (event.type)
+        //            {
+        //            case MidiEventType.noteOn:
+        //                // check if it is being released
+        //                auto state = me.notes.tryGetRef(event.noteOn.note);
+        //                if (state !is null)
+        //                {
+        //                    // TODO: change should be gradual, not immediate
+        //                    state.base.targetVolume = (event.noteOn.velocity / 127f) * 1.0;
+        //                    state.base.controlState = NoteControlState.pressed;
+        //                    Renderer.reattackNote(me.instrumentData, &event, state);
+        //                }
+        //                else
+        //                {
+        //                    Renderer.NoteState newNoteState = void;
+        //                    newNoteState.base.currentVolume = event.noteOn.velocity / 127.0 * 1.0;
+        //                    newNoteState.base.targetVolume = newNoteState.base.currentVolume;
+        //                    newNoteState.base.releaseMultiplier = 0.9999;// default value
+        //                    newNoteState.base.note = event.noteOn.note;
+        //                    newNoteState.base.controlState = NoteControlState.pressed;
+        //                    Renderer.newNote(me.instrumentData, &event, &newNoteState);
+        //                    me.notes.set(newNoteState);
+        //                }
+        //                break;
+        //            case MidiEventType.noteOff:
+        //                auto state = me.notes.tryGetRef(event.noteOff.note);
+        //                if (state is null)
+        //                {
+        //                    logError("note off event for ", event.noteOff.note, " but note is not on? !!!!!!!!!!!!!!");
+        //                }
+        //                else
+        //                {
+        //                    if (me.sustainPedal)
+        //                    {
+        //                        state.base.controlState = NoteControlState.releasedWithSustain;
+        //                    }
+        //                    else
+        //                    {
+        //                        state.base.controlState = NoteControlState.releasedNoSustain;
+        //                    }
+        //                }
+        //                break;
+        //            case MidiEventType.sustainPedal:
+        //                me.sustainPedal = event.sustainPedal;
+        //                break;
+        //            default:
+        //                assert(0, "codebug");
+        //            }
+        //        }
     }
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // TODO: this function is probably too large to be in a template
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//    private static void render(typeof(this)* me, ubyte[] channels, SamplePoint* buffer,
-//        const SamplePoint* limit)
-//    {
-//        // TODO: maybe the buffer loop should be the outer one?
-//        //       maybe loop through each cache line, then through each note?
-//        for (size_t noteIndex = 0; noteIndex < me.notes.length; noteIndex++)
-//        {
-//            auto note = me.notes.asArray[noteIndex];
-//            bool removeNote = false;
-//            //log("Rendering note ", note.note);
-//            for (auto next = buffer; next < limit; next += audio.global.channelCount)
-//            {
-//                // Adjust volume
-//                switch (note.base.controlState)
-//                {
-//                    case NoteControlState.pressed:
-//                        if (note.base.targetVolume != note.base.currentVolume)
-//                        {
-//                            enum VolumeChangeVelocity = 0.001; // note: should take frequency into account
-//                            note.base.currentVolume = note.base.currentVolume.stepCloserTo(
-//                                note.base.targetVolume, VolumeChangeVelocity);
-//                        }
-//                        break;
-//                    case NoteControlState.releasedWithSustain:
-//                        if (!me.sustainPedal)
-//                        {
-//                            note.base.controlState = NoteControlState.releasedNoSustain;
-//                            goto case NoteControlState.releasedNoSustain;
-//                        }
-//                        break;
-//                    case NoteControlState.releasedNoSustain:
-//                        note.base.currentVolume *= note.base.releaseMultiplier;
-//                        // lower notes don't sound as good when they are released early
-//                        enum ReleaseVolumeThreshold = 0.001; // TODO: make this configurable?
-//                        if (note.base.currentVolume <= ReleaseVolumeThreshold)
-//                        {
-//                            //logDebug("release");
-//                            removeNote = true;
-//                            break;
-//                        }
-//                        break;
-//                    default: assert(0, "codebug");
-//                }
-//
-//                Renderer.renderNote(me.instrumentData, &note, channels, next);
-//            }
-//
-//            if (removeNote)
-//            {
-//                const result = me.notes.remove(note.base.note);
-//                if (result != noteIndex)
-//                {
-//                    logError("removed note at index ", noteIndex, " but it returned ", result);
-//                    assert(0, "codebug");
-//                }
-//                noteIndex--; // rewind
-//            }
-//            else
-//            {
-//                me.notes.set(note); // write back to the array
-//            }
-//        }
-//    }
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // TODO: this function is probably too large to be in a template
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //    private static void render(typeof(this)* me, ubyte[] channels, SamplePoint* buffer,
+    //        const SamplePoint* limit)
+    //    {
+    //        // TODO: maybe the buffer loop should be the outer one?
+    //        //       maybe loop through each cache line, then through each note?
+    //        for (size_t noteIndex = 0; noteIndex < me.notes.length; noteIndex++)
+    //        {
+    //            auto note = me.notes.asArray[noteIndex];
+    //            bool removeNote = false;
+    //            //log("Rendering note ", note.note);
+    //            for (auto next = buffer; next < limit; next += audio.global.channelCount)
+    //            {
+    //                // Adjust volume
+    //                switch (note.base.controlState)
+    //                {
+    //                    case NoteControlState.pressed:
+    //                        if (note.base.targetVolume != note.base.currentVolume)
+    //                        {
+    //                            enum VolumeChangeVelocity = 0.001; // note: should take frequency into account
+    //                            note.base.currentVolume = note.base.currentVolume.stepCloserTo(
+    //                                note.base.targetVolume, VolumeChangeVelocity);
+    //                        }
+    //                        break;
+    //                    case NoteControlState.releasedWithSustain:
+    //                        if (!me.sustainPedal)
+    //                        {
+    //                            note.base.controlState = NoteControlState.releasedNoSustain;
+    //                            goto case NoteControlState.releasedNoSustain;
+    //                        }
+    //                        break;
+    //                    case NoteControlState.releasedNoSustain:
+    //                        note.base.currentVolume *= note.base.releaseMultiplier;
+    //                        // lower notes don't sound as good when they are released early
+    //                        enum ReleaseVolumeThreshold = 0.001; // TODO: make this configurable?
+    //                        if (note.base.currentVolume <= ReleaseVolumeThreshold)
+    //                        {
+    //                            //logDebug("release");
+    //                            removeNote = true;
+    //                            break;
+    //                        }
+    //                        break;
+    //                    default: assert(0, "codebug");
+    //                }
+    //
+    //                Renderer.renderNote(me.instrumentData, &note, channels, next);
+    //            }
+    //
+    //            if (removeNote)
+    //            {
+    //                const result = me.notes.remove(note.base.note);
+    //                if (result != noteIndex)
+    //                {
+    //                    logError("removed note at index ", noteIndex, " but it returned ", result);
+    //                    assert(0, "codebug");
+    //                }
+    //                noteIndex--; // rewind
+    //            }
+    //            else
+    //            {
+    //                me.notes.set(note); // write back to the array
+    //            }
+    //        }
+    //    }
 };
